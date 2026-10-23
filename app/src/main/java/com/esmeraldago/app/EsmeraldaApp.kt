@@ -23,7 +23,8 @@ class EsmeraldaApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.game.load()
-        container.updates.check(quiet = true) { r ->
+        // En los tests (Robolectric) no se consulta GitHub.
+        if (android.os.Build.FINGERPRINT != "robolectric") container.updates.check(quiet = true) { r ->
             container.notify("¡Hay una versión nueva de EsmeraldaGO (${r.version})!", "VER") {
                 container.pendingNavigation.value = "settings"
             }

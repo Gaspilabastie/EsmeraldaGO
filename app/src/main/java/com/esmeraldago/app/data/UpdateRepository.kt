@@ -15,24 +15,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** update.json que release.ps1 adjunta a cada release. */
 @Serializable
-private data class GhAsset(val name: String, @SerialName("browser_download_url") val url: String, val size: Long = 0)
-
-@Serializable
-private data class GhRelease(
-    @SerialName("tag_name") val tag: String,
-    val body: String? = null,
-    val draft: Boolean = false,
-    val prerelease: Boolean = false,
-    val assets: List<GhAsset> = emptyList(),
-)
+private data class UpdateManifest(val version: String, val notes: String = "", val apk: String, val size: Long = 0)
 
 data class AppRelease(val version: String, val notes: String, val apkUrl: String, val size: Long)
 
@@ -65,7 +56,7 @@ class UpdateRepository(private val context: Context, private val scope: Coroutin
             if (!quiet) _state.value = UpdateState.Checking
             runCatching { latest() }
                 .onSuccess { r ->
-                    if (r != null && isNewer(r.version, currentVersion)) {
+                    if (isNewer(r.version, currentVersion)) {
                         _state.value = UpdateState.Available(r)
                         onAvailable(r)
                     } else if (!quiet) _state.value = UpdateState.UpToDate
@@ -103,13 +94,15 @@ class UpdateRepository(private val context: Context, private val scope: Coroutin
         )
     }
 
-    private fun latest(): AppRelease? {
-        val text = GameDataSources.open("https://api.github.com/repos/${BuildConfig.UPDATE_REPO}/releases/latest")
-            .use { it.reader().readText() }
-        val r = GameDataSources.json.decodeFromString(GhRelease.serializer(), text)
-        if (r.draft || r.prerelease) return null
-        val asset = r.assets.firstOrNull { it.name.endsWith(".apk") } ?: return null
-        return AppRelease(r.tag.removePrefix("v"), r.body.orEmpty().trim(), asset.url, asset.size)
+    /**
+     * Lee el update.json de la última release. Se baja de github.com (redirección de releases/latest/download),
+     * no de api.github.com, que limita a 60 consultas por hora por IP sin login.
+     */
+    private fun latest(): AppRelease {
+        val base = "https://github.com/${BuildConfig.UPDATE_REPO}/releases"
+        val text = GameDataSources.open("$base/latest/download/update.json").use { it.reader().readText() }
+        val m = GameDataSources.json.decodeFromString(UpdateManifest.serializer(), text)
+        return AppRelease(m.version, m.notes.trim(), "$base/download/v${m.version}/${m.apk}", m.size)
     }
 
     private fun fetch(release: AppRelease, dest: File) {

@@ -68,11 +68,16 @@ $msgFile = Join-Path $scratch 'commit.txt'
 $notesFile = Join-Path $scratch 'notes.txt'
 [IO.File]::WriteAllText($msgFile, "$tag`n`n$Notes`n", $utf8)
 [IO.File]::WriteAllText($notesFile, $Notes, $utf8)
+# Lo que lee la app al buscar actualización (github.com/.../releases/latest/download/update.json).
+$manifest = Join-Path $scratch 'update.json'
+$apkName = Split-Path $apk -Leaf
+$json = [ordered]@{ version = $Version; notes = $Notes; apk = $apkName; size = (Get-Item $apk).Length } | ConvertTo-Json
+[IO.File]::WriteAllText($manifest, $json, $utf8)
 
 Invoke-Checked 'git add' { & $git add -A }
 Invoke-Checked 'git commit' { & $git commit -q -F $msgFile }
 Invoke-Checked 'git tag' { & $git tag $tag }
 Invoke-Checked 'git push' { & $git push -q origin HEAD $tag }
-Invoke-Checked 'gh release' { & $gh release create $tag $apk --title "EsmeraldaGO $Version" --notes-file $notesFile }
+Invoke-Checked 'gh release' { & $gh release create $tag $apk $manifest --title "EsmeraldaGO $Version" --notes-file $notesFile }
 
 Write-Host "Listo: $tag publicado. En el teléfono: Opciones -> Buscar actualización."
