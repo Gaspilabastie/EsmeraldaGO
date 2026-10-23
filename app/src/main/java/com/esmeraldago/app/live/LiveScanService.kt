@@ -28,6 +28,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.esmeraldago.app.EsmeraldaApp
 import com.esmeraldago.app.MainActivity
 import com.esmeraldago.app.R
+import com.esmeraldago.app.scan.OcrScanner
 import com.esmeraldago.core.scan.ScreenType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +59,9 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var panelParams: WindowManager.LayoutParams? = null
     private var continuousJob: Job? = null
+    private var scanJob: Job? = null
+    /** Pokémon GO no está adelante (lo sabe el servicio de accesibilidad, si está activo). */
+    private var away = false
 
     override fun onCreate() {
         savedState.performAttach()
@@ -97,18 +101,91 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         _running.value = true
         showBubble()
         if (container.settings.state.value.liveContinuous) setContinuous(true)
+        // Fuera de Pokémon GO: la burbuja se oculta y el modo continuo se pausa (sin leer otras apps).
+        lifecycleScope.launch {
+            LiveGestureService.foreground.collect { pkg ->
+                val nowAway = pkg != null && pkg != LiveGestureService.POKEMON_GO
+                if (nowAway != away) { away = nowAway; setOverlaysVisible(!nowAway) }
+            }
+        }
+    }
+
+    private var panelWanted = false
+
+    private fun setOverlaysVisible(visible: Boolean) {
+        if (visible) {
+            bubble?.let { v -> runCatching { wm.addView(v, bubbleParams) } }
+            if (panelWanted) panel?.let { v -> runCatching { wm.addView(v, panelParams) } }
+        } else {
+            listOfNotNull(bubble, panel).forEach { runCatching { wm.removeView(it) } }
+        }
     }
 
     // ------------------------------------------------------------------ acciones
 
     /** Lee lo que hay en pantalla ahora (un toque en la burbuja). */
     fun scanNow() {
-        lifecycleScope.launch {
+        if (scanJob?.isActive == true) return
+        scanJob = lifecycleScope.launch {
             _status.value = "Leyendo…"
-            val bmp = grabWithoutOverlays() ?: run { _status.value = "Todavía no hay imagen de la pantalla."; return@launch }
-            container.scan.enqueue(bmp, "En vivo")
+            val idx = container.scan.idx()
+            val parser = container.scan.parserFor(idx)
+            val a = withOverlaysHidden { captureBest(parser) }
+            when {
+                a == null -> _status.value = "Todavía no hay imagen de la pantalla."
+                a.result.screen == ScreenType.UNKNOWN -> {
+                    // No era la ficha de un Pokémon: se avisa, sin cargarlo como falla ni mostrar el anterior.
+                    container.scan.clearLatest()
+                    _status.value = a.result.problem ?: "No es la ficha de un Pokémon."
+                }
+                else -> { container.scan.submit(a, idx, parser); _status.value = null }
+            }
             showPanel(true)
-            _status.value = null
+        }
+    }
+
+    /**
+     * La mejor lectura de lo que hay en pantalla:
+     * - si el PC está tapado o no cuadra, unos fotogramas más (el modelo se mueve y lo destapa);
+     * - si no se vieron los ataques y el servicio de accesibilidad está activo, baja la ficha, los lee y vuelve.
+     */
+    private suspend fun captureBest(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
+        var best = analyzeFrame(parser) ?: return null
+        if (best.result.screen == ScreenType.UNKNOWN) return best
+        var tries = 0
+        while ((best.result.cp == null || best.result.cpInferred) && tries++ < 3) {
+            delay(350)
+            val a = analyzeFrame(parser) ?: break
+            if (a.result.screen != ScreenType.UNKNOWN && cpQuality(a.result) > cpQuality(best.result)) best = a
+        }
+        val gestures = LiveGestureService.instance
+        if (best.result.screen == ScreenType.DETAIL && best.result.fast == null && gestures != null &&
+            container.settings.state.value.autoScroll && gestures.swipe(0.78f, 0.38f)
+        ) {
+            delay(900) // que termine el desplazamiento
+            val lower = analyzeFrame(parser)
+            gestures.swipe(0.38f, 0.78f)
+            // La parte de abajo no muestra el PC (y casi nunca los PS); si muestra otros PS, es otro Pokémon.
+            if (lower != null && (lower.result.hp == null || lower.result.hp == best.result.hp)) {
+                best = best.copy(result = parser.combine(best.result, lower.result), lines = best.lines + lower.lines)
+            }
+            delay(300)
+        }
+        return best
+    }
+
+    /** PC leído y coherente > PC deducido > sin PC; a igualdad, con IV posibles. */
+    private fun cpQuality(r: com.esmeraldago.core.scan.ScanResult) =
+        (if (r.cp != null && !r.cpInferred) 20 else if (r.cp != null) 10 else 0) + if (r.candidates.isNotEmpty()) 1 else 0
+
+    private suspend fun analyzeFrame(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
+        val bmp = capturer?.grab() ?: return null
+        return try {
+            container.ocr.analyze(bmp, parser)
+        } catch (t: Throwable) {
+            null
+        } finally {
+            withContext(Dispatchers.Default) { bmp.recycle() }
         }
     }
 
@@ -117,13 +194,15 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
      * con el panel abierto arriba se tapaba el PC y el nombre. Se quitan de la pantalla, se espera un
      * fotograma limpio, se captura y se vuelven a poner.
      */
-    private suspend fun grabWithoutOverlays(): android.graphics.Bitmap? {
+    private suspend fun <T> withOverlaysHidden(block: suspend () -> T): T {
         val views = listOfNotNull(bubble?.let { it to bubbleParams }, panel?.let { it to panelParams })
         views.forEach { (v, _) -> runCatching { wm.removeView(v) } }
         delay(300) // que la pantalla se redibuje sin la burbuja ni el panel
-        val bmp = capturer?.grab()
-        views.forEach { (v, p) -> runCatching { wm.addView(v, p) } }
-        return bmp
+        return try {
+            block()
+        } finally {
+            if (!away) views.forEach { (v, p) -> runCatching { wm.addView(v, p) } }
+        }
     }
 
     /** Modo continuo: lee cada ~1,2 s y agrega cada Pokémon distinto que aparezca. */
@@ -137,8 +216,11 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         continuousJob = lifecycleScope.launch {
             var lastKey: Triple<ScreenType, Int?, Int?>? = null
             val session = container.scan
+            var misses = 0
             while (isActive) {
-                delay(1200)
+                // Fuera del juego no se lee nada; un buen rato sin ver un Pokémon, se lee más espaciado.
+                delay(if (misses > 8) 4000 else 1200)
+                if (away) continue
                 val bmp = capturer?.grab() ?: continue
                 val idx = session.idx()
                 val parser = session.parserFor(idx)
@@ -151,7 +233,8 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
                 }
                 a ?: continue
                 val r = a.result
-                if (r.screen == ScreenType.UNKNOWN || r.cp == null) continue
+                if (r.screen == ScreenType.UNKNOWN || r.cp == null) { misses++; continue }
+                misses = 0
                 val key = Triple(r.screen, r.cp, r.hp)
                 if (key == lastKey) continue // mismo Pokémon todavía en pantalla
                 lastKey = key
@@ -206,13 +289,14 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     fun showPanel(show: Boolean) {
+        panelWanted = show
         if (show && panel == null) {
             val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {
                 y = (resources.displayMetrics.density * 24).toInt()
             }
             panelParams = params
             panel = composeView { LivePanel(container = container, service = this) }
-            wm.addView(panel, params)
+            if (!away) wm.addView(panel, params)
         } else if (!show && panel != null) {
             runCatching { wm.removeView(panel) }
             panel = null

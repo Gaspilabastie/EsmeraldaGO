@@ -61,7 +61,8 @@ data class ScreenReading(
         hasReturn = hasReturn || o.hasReturn,
         types = types.ifEmpty { o.types }, nameText = nameText ?: o.nameText,
         candyNames = (candyNames + o.candyNames).distinct(), captionName = captionName ?: o.captionName,
-        moveTexts = moveTexts.ifEmpty { o.moveTexts },
+        // La parte de arriba suele mostrar solo el primer ataque (o cortado): se suman los de las dos.
+        moveTexts = (moveTexts + o.moveTexts).distinct(),
     )
 }
 
@@ -174,16 +175,20 @@ class ScreenParser(private val idx: GameIndex) {
 
     fun parse(lines: List<OcrLine>, bars: AppraisalBars? = null): ScanResult {
         val reading = read(lines)
-        if (reading.cp == null && reading.hp == null) {
-            if (reading.appraisalScreen && bars != null) {
-                return ScanResult(ScreenType.APPRAISAL, appraisal = bars.toIvs(), reading = reading,
-                    problem = "Solo se vio la valoración: agregá la pantalla del Pokémon.")
-            }
+        // La ficha y la valoración SIEMPRE muestran "x / y HP". Sin eso no es la pantalla de un Pokémon
+        // (la lista del almacenamiento, un menú, otra app): adivinar ahí daba "Puede ser A, B, C…" con
+        // 200 combinaciones. Se devuelve lo leído igual: la parte de abajo de la ficha (los ataques) se
+        // combina con la de arriba.
+        if (reading.hp == null) {
             val spanish = lines.any { l -> spanishHints.any { it in l.text.uppercase() } }
             return ScanResult(
                 ScreenType.UNKNOWN,
-                problem = if (spanish) "Parece el juego en español: la app lee el cliente en inglés."
-                else "No se encontró el PC ni los PS: ¿es la pantalla de un Pokémon?",
+                reading = reading,
+                problem = when {
+                    spanish -> "Parece el juego en español: la app lee el cliente en inglés."
+                    reading.cp != null -> "Esta pantalla no es la ficha de un Pokémon (no se ven los PS). Abrí uno y volvé a escanear."
+                    else -> "No es la ficha de un Pokémon: abrí uno en el juego y volvé a escanear."
+                },
             )
         }
         val appraisal = if (reading.appraisalScreen) bars?.toIvs() else null
@@ -208,6 +213,10 @@ class ScreenParser(private val idx: GameIndex) {
     fun combine(a: ScanResult, b: ScanResult): ScanResult {
         val appraisal = a.appraisal ?: b.appraisal
         val ra = a.reading; val rb = b.reading
+        // La parte de abajo de la ficha (solo ataques) no es una pantalla por sí sola: aporta sus pistas a la otra.
+        if (ra != null && rb != null && (a.screen == ScreenType.UNKNOWN || b.screen == ScreenType.UNKNOWN)) {
+            return resolve(ra.mergedWith(rb), appraisal)
+        }
         if (ra == null || rb == null) {
             val detail = if (a.screen == ScreenType.APPRAISAL) b else a
             return appraisal?.let { withAppraisal(detail, it) } ?: detail

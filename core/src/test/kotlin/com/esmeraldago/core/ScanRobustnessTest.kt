@@ -227,6 +227,41 @@ class ScanRobustnessTest {
     }
 
     @Test
+    fun storageList_isNotAPokemonScreen() {
+        // La lista del almacenamiento: muchos nombres y PC, ningún "x / y HP". Antes daba "Puede ser Delphox o
+        // Dragonite o…" (10 especies) con ~200 combinaciones de IV.
+        val names = listOf("Delphox", "Dragonite", "Gyarados", "Chesnaught", "Heracross", "Aggron", "Cinderace", "Snorlax", "Rhydon")
+        val lines = names.flatMapIndexed { i, n ->
+            val x = 0.05f + (i % 3) * 0.32f; val y = 0.20f + (i / 3) * 0.22f
+            listOf(l("CP3126", x, y, x + 0.2f, 0.02f), l(n, x, y + 0.15f, x + 0.25f, 0.02f))
+        }
+        val r = parser.parse(lines)
+        assertEquals(ScreenType.UNKNOWN, r.screen)
+        assertNull(r.species)
+        assertTrue(r.candidates.isEmpty())
+    }
+
+    @Test
+    fun lowerHalfOfDetail_addsTheMoves() {
+        // Modo en vivo: la ficha arriba (sin ataques visibles) + la misma ficha deslizada (sin PC ni PS).
+        val s = idx["exeggutor_alolan"]!!; val lv = 30.0; val iv = Ivs(13, 14, 12)
+        val top = parser.parse(detail(s, lv, iv, "GRASS / DRAGON", "EXEGGCUTE CANDY"))
+        assertNull(top.fast)
+        val lower = parser.parse(listOf(
+            l("GYMS & RAIDS", 0.26f, 0.30f, 0.43f, 0.013f), l("TRAINER BATTLES", 0.55f, 0.30f, 0.78f, 0.013f),
+            l("Dragon Tail", 0.17f, 0.35f, 0.37f, 0.025f), l("14", 0.88f, 0.35f, 0.92f, 0.015f),
+            l("O Solar Beam", 0.08f, 0.40f, 0.36f, 0.021f), l("NEW ATTACK", 0.13f, 0.46f, 0.41f, 0.013f),
+        ))
+        assertEquals(ScreenType.UNKNOWN, lower.screen)
+        val merged = parser.combine(top, lower)
+        assertEquals("exeggutor_alolan", merged.species?.id)
+        assertEquals("DRAGON_TAIL", merged.fast)
+        assertEquals(listOf("SOLAR_BEAM"), merged.charged)
+        assertEquals(top.cp, merged.cp)
+        assertEquals(top.candidates.toSet(), merged.candidates.toSet())
+    }
+
+    @Test
     fun truncatedMove_byNavigationBar() {
         val s = idx["zekrom"]!!
         val r = parser.parse(detail(s, 21.0, Ivs(13, 14, 12), "DRAGON / ELECTRIC", "ZEKROM CANDY", shadow = true, moves = listOf("Charge")))

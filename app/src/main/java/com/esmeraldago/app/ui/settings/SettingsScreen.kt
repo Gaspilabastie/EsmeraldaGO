@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import com.esmeraldago.app.data.AppRelease
 import com.esmeraldago.app.data.GameState
 import com.esmeraldago.app.data.UpdateState
+import com.esmeraldago.app.live.LiveGestureService
 import com.esmeraldago.app.ui.common.LocalContainer
 import com.esmeraldago.app.ui.theme.GbaText
 import com.esmeraldago.app.ui.theme.Labeled
@@ -56,6 +57,8 @@ fun SettingsScreen(onBack: () -> Unit) {
         TitleBar("Opciones", onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             AppUpdateBox()
+
+            LiveScanBox()
 
             WindowBox(Modifier.fillMaxWidth()) {
                 SectionTitle("Datos del juego")
@@ -183,6 +186,46 @@ private fun AppUpdateBox() {
         GbaText(
             "Se instala encima de la actual, así que no perdés tu colección. La primera vez Android te pide " +
                 "permitir que EsmeraldaGO instale apps.",
+            size = 11.sp, color = Pal.Muted,
+        )
+    }
+}
+
+/** Servicio de accesibilidad del escaneo en vivo: bajar la ficha para leer ataques y ocultar la burbuja fuera del juego. */
+@Composable
+private fun LiveScanBox() {
+    val container = LocalContainer.current
+    val settings by container.settings.state.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // El usuario lo activa en Ajustes del sistema: se vuelve a mirar al regresar a la app.
+    var enabled by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(LiveGestureService.isEnabled(context)) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) enabled = LiveGestureService.isEnabled(context)
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+    WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Escaneo en vivo")
+        Labeled("Accesibilidad", if (enabled) "Activa" else "Inactiva")
+        GbaText(
+            "Con el servicio de accesibilidad activo, la app baja sola la ficha para leer los ataques y la vuelve a subir, " +
+                "y oculta la burbuja cuando salís de Pokémon GO. No lee el contenido de otras apps.",
+            size = 12.sp, color = Pal.Muted,
+        )
+        ToggleChip("Bajar solo hasta los ataques", settings.autoScroll, { v -> container.settings.update { it.copy(autoScroll = v) } })
+        Row(Modifier.padding(top = 6.dp)) {
+            PixelButton(if (enabled) "AJUSTES DE ACCESIBILIDAD" else "ACTIVAR", {
+                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            })
+        }
+        GbaText(
+            "Buscá \"EsmeraldaGO: escaneo en vivo\" en Apps instaladas. Si Android no te deja activarlo: Ajustes → Apps → " +
+                "EsmeraldaGO → ⋮ → Permitir configuración restringida. Ojo: los términos de Niantic prohíben automatizar " +
+                "el juego; un deslizamiento en la ficha es inofensivo, pero el riesgo no es cero.",
             size = 11.sp, color = Pal.Muted,
         )
     }

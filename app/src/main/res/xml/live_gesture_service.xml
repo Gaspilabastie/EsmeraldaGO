@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solo gestos (deslizar la ficha) y saber qué app está adelante; no lee el contenido de las ventanas. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="false"
+    android:notificationTimeout="200"
+    android:description="@string/live_gesture_description" />

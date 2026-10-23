@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">EsmeraldaGO</string>
+    <string name="live_gesture_label">EsmeraldaGO: escaneo en vivo</string>
+    <string name="live_gesture_description">Durante el escaneo en vivo, desliza la ficha del Pokémon en Pokémon GO para leer sus ataques y la vuelve a subir, y oculta la burbuja cuando salís del juego. No lee el contenido de otras apps.</string>
 </resources>

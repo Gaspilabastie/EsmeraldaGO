@@ -18,6 +18,8 @@ data class Settings(
     val trainerLevel: Int = 0,
     /** Mostrar en rankings y Pokédex las especies que todavía no salieron en Pokémon GO. */
     val showUnreleased: Boolean = false,
+    /** Escaneo en vivo: bajar solo la ficha para leer los ataques (necesita el servicio de accesibilidad). */
+    val autoScroll: Boolean = true,
 ) {
     /** Nivel máximo que puede tener un Pokémon tuyo: entrenador + 10, tope 51 (Mejor Compañero). */
     val pokemonLevelCap: Double get() = if (trainerLevel <= 0) 51.0 else minOf(51.0, trainerLevel + 10.0)
@@ -33,6 +35,7 @@ class SettingsRepository(context: Context) {
             liveContinuous = prefs.getBoolean("liveContinuous", false),
             trainerLevel = prefs.getInt("trainerLevel", 0),
             showUnreleased = prefs.getBoolean("showUnreleased", false),
+            autoScroll = prefs.getBoolean("autoScroll", true),
         )
     )
     val state: StateFlow<Settings> = _state.asStateFlow()
@@ -47,6 +50,7 @@ class SettingsRepository(context: Context) {
             .putBoolean("liveContinuous", s.liveContinuous)
             .putInt("trainerLevel", s.trainerLevel)
             .putBoolean("showUnreleased", s.showUnreleased)
+            .putBoolean("autoScroll", s.autoScroll)
             .apply()
     }
 }

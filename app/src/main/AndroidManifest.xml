@@ -52,6 +52,20 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <!-- Opcional: deslizar la ficha para leer los ataques y saber si Pokémon GO está adelante. -->
+        <service
+            android:name=".live.LiveGestureService"
+            android:exported="true"
+            android:label="@string/live_gesture_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/live_gesture_service" />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

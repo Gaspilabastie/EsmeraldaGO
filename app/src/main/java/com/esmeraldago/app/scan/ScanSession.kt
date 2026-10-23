@@ -183,6 +183,9 @@ class ScanSession(
 
     fun update(d: ScanDraft) = _drafts.update { list -> list.map { if (it.key == d.key) d else it } }
 
+    /** El último escaneo no fue un Pokémon: el panel en vivo no debe seguir mostrando el anterior como si fuera este. */
+    fun clearLatest() { _latestKey.value = null }
+
     /** Aplica un cambio sobre la versión ACTUAL del borrador (no pisa una fusión que llegó mientras tanto). */
     fun update(key: Int, transform: (ScanDraft) -> ScanDraft) =
         _drafts.update { list -> list.map { if (it.key == key) transform(it) else it } }
