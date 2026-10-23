@@ -74,8 +74,13 @@ class GameRepository(
     }
 
     private fun ready(data: GameData): GameState.Ready {
-        val idx = GameIndex(data)
+        val idx = GameIndex(data, includeUnreleased = settings.state.value.showUnreleased)
         return GameState.Ready(idx, Recommender(idx, settings.state.value.pvpMaxLevel))
+    }
+
+    /** Rehace el índice cuando cambia "Mostrar no lanzados" (los rankings y la Pokédex dependen de él). */
+    fun refreshIndex() = scope.launch(Dispatchers.Default) {
+        lock.withLock { (_state.value as? GameState.Ready)?.let { _state.value = ready(it.idx.data) } }
     }
 
     /** Recalcula el recomendador cuando cambian los ajustes (nivel máximo PvP). */

@@ -63,6 +63,12 @@ data class Species(
     fun isElite(moveId: String) = moveId in elite
     /** Movimiento de firma o de forma (no se pierde ni requiere MT Élite). */
     fun isSignature(moveId: String) = moveId in legacy && moveId !in elite
+
+    /**
+     * Fuera de lo "budget" (lo que se consigue sin incursiones raras): legendarios, singulares y ultraentes,
+     * la misma lista que prohíbe la Premier Cup. Megas y oscuros tienen su propio filtro.
+     */
+    val nonBudget: Boolean get() = legendary || mythical || ultraBeast
 }
 
 @Serializable

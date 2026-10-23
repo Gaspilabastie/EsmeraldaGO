@@ -47,6 +47,7 @@ private val ENTRIES = listOf(
     Entry("DINAMAX", "max", "Los mejores atacantes y tanques contra un jefe Dinamax."),
     Entry("EQUIPOS", "teams", "Equipos para cada liga PvP armados con tus Pokémon."),
     Entry("CONSEJOS", "advice", "Qué subir, qué evolucionar y qué conviene atrapar."),
+    Entry("TIPOS", "types", "Tabla de tipos: a quién le pega fuerte un ataque y qué le pega fuerte a uno o dos tipos."),
     Entry("OPCIONES", "settings", "Actualizar los datos del juego y ajustes de cálculo."),
 )
 

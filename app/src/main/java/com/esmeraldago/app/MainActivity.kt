@@ -146,7 +146,7 @@ private fun AppNav() {
         composable("pokedex") { com.esmeraldago.app.ui.pokedex.PokedexScreen(back, onSpecies = { nav.navigate("species/$it") }) }
         composable("rankings") { RankingsScreen(back, onSpecies = { nav.navigate("species/$it") }) }
         composable("species/{id}", listOf(navArgument("id") { type = NavType.StringType })) {
-            SpeciesDetailScreen(it.arguments!!.getString("id")!!, back)
+            SpeciesDetailScreen(it.arguments!!.getString("id")!!, back, onSpecies = { id -> nav.navigate("species/$id") })
         }
         composable("raids") {
             RaidsScreen(back, onBoss = { id, tier -> nav.navigate("counters/$id/$tier") })
@@ -180,5 +180,6 @@ private fun AppNav() {
                 onScan = { nav.navigate("scan") })
         }
         composable("settings") { SettingsScreen(back) }
+        composable("types") { com.esmeraldago.app.ui.types.TypesScreen(back) }
     }
 }

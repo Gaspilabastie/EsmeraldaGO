@@ -8,12 +8,18 @@ import com.esmeraldago.core.model.Species
 import kotlin.math.roundToInt
 
 /** Índices de búsqueda sobre [GameData]. Se construye una vez al cargar los datos. */
-class GameIndex(val data: GameData) {
+class GameIndex(
+    val data: GameData,
+    /** Incluir las especies que todavía no salieron en Pokémon GO (opción "Mostrar no lanzados"). */
+    val includeUnreleased: Boolean = false,
+) {
     val species: Map<String, Species> = data.species.associateBy { it.id }
     val moves: Map<String, Move> = data.moves.associateBy { it.id }
 
-    /** Especies "elegibles" para rankings: liberadas y sin duplicados raros. */
-    val released: List<Species> = data.species.filter { it.released && it.atk > 0 }
+    private fun visible(s: Species) = includeUnreleased || s.released
+
+    /** Especies "elegibles" para rankings: liberadas (o todas, con la opción) y sin duplicados raros. */
+    val released: List<Species> = data.species.filter { visible(it) && it.atk > 0 }
 
     private val pvpIndex: Map<String, Map<String, Pair<Int, PvpRank>>> =
         data.pvp.mapValues { (_, list) -> list.mapIndexed { i, r -> r.id to ((i + 1) to r) }.toMap() }
@@ -63,7 +69,7 @@ class GameIndex(val data: GameData) {
     }
 
     /** Formas "jugables" (sin shadow/mega) agrupadas por número de Pokédex. */
-    val byDex: Map<Int, List<Species>> = data.species.filter { !it.shadow && !it.mega && it.released }.groupBy { it.dex }
+    val byDex: Map<Int, List<Species>> = data.species.filter { !it.shadow && !it.mega && visible(it) }.groupBy { it.dex }
 
     /**
      * Todas las especies que el juego podría mostrar con este nombre: el juego muestra "Giratina", "Marowak"

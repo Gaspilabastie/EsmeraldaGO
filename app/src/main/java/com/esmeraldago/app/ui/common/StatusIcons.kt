@@ -18,16 +18,19 @@ private class PixelArt(val rows: List<String>, val palette: Map<Char, Color>)
 
 private val FLAME = PixelArt(
     listOf(
-        "...o....",
-        "..o#o...",
-        "..o#+o..",
-        ".o##+o.o",
-        ".o#+#o#o",
-        "o##++##o",
-        "o#+++#+o",
-        "o#++++#o",
-        ".o#++#o.",
-        "..oooo..",
+        "....o......",
+        "...oo......",
+        "...o#o.....",
+        "..o##o..o..",
+        "..o#+#o.oo.",
+        ".o##++#o#o.",
+        ".o#+++##+o.",
+        "o##++++#+#o",
+        "o#+++++++#o",
+        "o#++++++##o",
+        ".o#+++++#o.",
+        "..o##+##o..",
+        "...ooooo...",
     ),
     mapOf('o' to Color(0xFF2A0E4A), '#' to Color(0xFF8030C8), '+' to Color(0xFFD090F8)),
 )
@@ -74,23 +77,31 @@ private val CLOVER = PixelArt(
 
 private val PURIFIED = PixelArt(
     listOf(
-        "...o...",
-        "..o+o..",
-        ".o+#+o.",
-        "o+###+o",
-        ".o+#+o.",
-        "..o+o..",
-        "...o...",
+        ".....o.....",
+        "....o+o....",
+        "...o+#+o...",
+        "..o+###+o..",
+        ".o+##+##+o.",
+        "o+##+++##+o",
+        ".o+##+##+o.",
+        "..o+###+o..",
+        "...o+#+o...",
+        "....o+o....",
+        ".....o.....",
     ),
     mapOf('o' to Color(0xFF2058A8), '+' to Color(0xFF78C8F8), '#' to Color(0xFFFFFFFF)),
 )
+
+/** Todas las figuras se dibujan sobre la misma grilla: así el píxel mide lo mismo en todos los íconos. */
+private const val GRID = 13
 
 @Composable
 private fun PixelIcon(art: PixelArt, size: Dp, modifier: Modifier = Modifier) {
     Canvas(modifier.size(size)) {
         val cols = art.rows.maxOf { it.length }
-        // Celdas de un número entero de píxeles reales: si no, unas "píxeles" salen más gruesas que otras.
-        val cell = floor(minOf(this.size.width / cols, this.size.height / art.rows.size)).coerceAtLeast(1f)
+        // Celdas de un número entero de píxeles reales (si no, unos "píxeles" salen más gruesos que otros) y
+        // del MISMO tamaño en todos los íconos: la celda sale de la grilla común, no de cada dibujo.
+        val cell = floor(minOf(this.size.width, this.size.height) / GRID).coerceAtLeast(1f)
         val x0 = floor((this.size.width - cell * cols) / 2)
         val y0 = floor((this.size.height - cell * art.rows.size) / 2)
         art.rows.forEachIndexed { y, row ->

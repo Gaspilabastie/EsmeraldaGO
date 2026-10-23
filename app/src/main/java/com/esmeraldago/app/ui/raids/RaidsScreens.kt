@@ -1,5 +1,6 @@
 package com.esmeraldago.app.ui.raids
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -139,15 +140,17 @@ fun CountersScreen(bossId: String, tierName: String, onBack: () -> Unit, onSpeci
                 return@WithGame
             }
             TitleBar("vs ${boss.displayName}", onBack)
-            WindowBox(Modifier.fillMaxWidth().padding(8.dp)) {
+            // Tocar al jefe abre su entrada de Pokédex.
+            WindowBox(Modifier.fillMaxWidth().padding(8.dp).clickable { onSpecies(boss.id) }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Sprite(boss, 64.dp)
                     Spacer(Modifier.width(8.dp))
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         GbaText("${tier.label} · ${boss.displayName}", size = 15.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { boss.types.forEach { TypeBadge(it, small = true) } }
                         GbaText("Débil a: " + Types.weaknesses(boss.types).joinToString(", ") { Types.es(it) }, size = 12.sp, color = Pal.Muted)
                     }
+                    GbaText("▶", size = 14.sp, color = Pal.Muted)
                 }
             }
             PixelTabs(listOf(false, true), mine, { if (it) "MIS POKéMON" else "TODOS" }, { mine = it })

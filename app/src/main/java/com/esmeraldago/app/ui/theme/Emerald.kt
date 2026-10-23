@@ -452,7 +452,9 @@ fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect:
  * (pantalla angosta o letra grande) se usan abreviaturas de 3 letras.
  */
 @Composable
-fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier, types: List<String> = Types.ALL) {
+/** Elige un tipo ([selected]) o varios ([selectedSet], p. ej. los dos tipos de un defensor). */
+fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier, types: List<String> = Types.ALL,
+               selectedSet: Set<String>? = null) {
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
         val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
         val short = maxWidth / 6 < 62.dp * fontScale
@@ -460,7 +462,7 @@ fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier 
             types.chunked(6).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     row.forEach { t ->
-                        val sel = t == selected
+                        val sel = selectedSet?.contains(t) ?: (t == selected)
                         Box(
                             Modifier
                                 .weight(1f)

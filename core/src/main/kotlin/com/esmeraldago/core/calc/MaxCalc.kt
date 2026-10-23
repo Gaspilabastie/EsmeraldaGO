@@ -80,9 +80,10 @@ object MaxCalc {
     }
 
     /** Mejores atacantes Dinamax cuyo Max Attack es del tipo pedido. */
-    fun topAttackers(type: String, idx: GameIndex, level: Double = 40.0, maxMoveLevel: Int = 3, limit: Int = 40): List<MaxResult> {
+    fun topAttackers(type: String, idx: GameIndex, level: Double = 40.0, maxMoveLevel: Int = 3, limit: Int = 40,
+                     includeNonBudget: Boolean = true): List<MaxResult> {
         val target = PveTarget(assumeWeakTo = type)
-        return idx.released.flatMap { s ->
+        return idx.released.filter { includeNonBudget || !it.nonBudget }.flatMap { s ->
             Interrupt.check()
             variants(s).mapNotNull { gmax ->
                 PveCalc.usableFast(s, idx).filter { maxMoveType(s, gmax, it) == type }
@@ -93,8 +94,8 @@ object MaxCalc {
     }
 
     /** Mejores tanques genéricos (Max Guard): mayor Def × PS. */
-    fun topTanks(idx: GameIndex, level: Double = 40.0, limit: Int = 40): List<MaxResult> =
-        idx.released.flatMap { s ->
+    fun topTanks(idx: GameIndex, level: Double = 40.0, limit: Int = 40, includeNonBudget: Boolean = true): List<MaxResult> =
+        idx.released.filter { includeNonBudget || !it.nonBudget }.flatMap { s ->
             variants(s).mapNotNull { gmax ->
                 PveCalc.usableFast(s, idx).firstOrNull()?.let { evaluate(s, gmax, it, idx, level) }
             }

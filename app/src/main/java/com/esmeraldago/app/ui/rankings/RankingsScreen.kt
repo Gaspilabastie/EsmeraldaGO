@@ -66,6 +66,8 @@ fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
     var pvpAllowElite by rememberSaveable { mutableStateOf(true) }
     var maxType by rememberSaveable { mutableStateOf("fighting") }
     var maxTanks by rememberSaveable { mutableStateOf(false) }
+    // "No Budget": legendarios, singulares y ultraentes. Prendido = se ven (como los demás chips).
+    var nonBudget by rememberSaveable { mutableStateOf(true) }
 
     Column(Modifier.fillMaxSize()) {
         TitleBar("Rankings", onBack)
@@ -75,9 +77,9 @@ fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
         WithGame { idx, _ ->
             when (tab) {
                 Tab.PVE -> PveTab(idx, onSpecies, pveType, { pveType = it }, pveShadow, { pveShadow = it },
-                    pveMega, { pveMega = it }, pveElite, { pveElite = it })
-                Tab.PVP -> PvpTab(idx, onSpecies, league, { league = it }, pvpShadow, { pvpShadow = it }, pvpAllowElite, { pvpAllowElite = it })
-                Tab.MAX -> MaxTab(idx, onSpecies, maxType, { maxType = it }, maxTanks, { maxTanks = it })
+                    pveMega, { pveMega = it }, pveElite, { pveElite = it }, nonBudget, { nonBudget = it })
+                Tab.PVP -> PvpTab(idx, onSpecies, league, { league = it }, pvpShadow, { pvpShadow = it }, pvpAllowElite, { pvpAllowElite = it }, nonBudget, { nonBudget = it })
+                Tab.MAX -> MaxTab(idx, onSpecies, maxType, { maxType = it }, maxTanks, { maxTanks = it }, nonBudget, { nonBudget = it })
             }
         }
     }
@@ -91,11 +93,12 @@ private fun PveTab(
     shadow: Boolean, setShadow: (Boolean) -> Unit,
     mega: Boolean, setMega: (Boolean) -> Unit,
     elite: Boolean, setElite: (Boolean) -> Unit,
+    nonBudget: Boolean, setNonBudget: (Boolean) -> Unit,
 ) {
     val settings by LocalContainer.current.settings.state.collectAsState()
     val level = settings.rankLevel
-    val (results, busy) = rememberComputed(idx, type, shadow, mega, elite, level) {
-        PveCalc.topAttackers(type, idx, level, shadow, mega, elite, limit = 60)
+    val (results, busy) = rememberComputed(idx, type, shadow, mega, elite, level, nonBudget) {
+        PveCalc.topAttackers(type, idx, level, shadow, mega, elite, limit = 60, includeNonBudget = nonBudget)
     }
 
     val list = results.orEmpty()
@@ -110,6 +113,7 @@ private fun PveTab(
                     ToggleChip("Oscuros", shadow, setShadow)
                     ToggleChip("Megas", mega, setMega)
                     ToggleChip("Legado", elite, setElite)
+                    ToggleChip("No Budget", nonBudget, setNonBudget)
                 }
                 GbaText(
                     "Atacantes ${Types.es(type)} · Nv ${fmtLevel(level)} 15/15/15 · contra jefe débil a ${Types.es(type)}" +
@@ -139,12 +143,15 @@ private fun PvpTab(
     league: League, setLeague: (League) -> Unit,
     shadow: Boolean, setShadow: (Boolean) -> Unit,
     allowElite: Boolean, setAllowElite: (Boolean) -> Unit,
+    nonBudget: Boolean, setNonBudget: (Boolean) -> Unit,
 ) {
     val topScore = idx.pvpRanking(league).firstOrNull()?.score ?: 100.0
-    val rows = remember(idx, league, shadow, allowElite) {
+    val rows = remember(idx, league, shadow, allowElite, nonBudget) {
         idx.pvpRanking(league).asSequence()
             .mapIndexedNotNull { i, r -> idx[r.id]?.let { Triple(i + 1, r, it) } }
             .filter { (_, _, s) -> shadow || !s.shadow }
+            .filter { (_, _, s) -> nonBudget || !s.nonBudget }
+            .filter { (_, _, s) -> idx.includeUnreleased || s.released }
             // El puntaje de PvPoke está simulado CON su moveset recomendado: si ese moveset necesita una
             // MT Élite y no querés gastarla, el Pokémon se oculta (sin ese ataque su puntaje sería otro).
             .filter { (_, r, s) -> allowElite || r.moveset.none { s.isElite(it) } }
@@ -157,6 +164,7 @@ private fun PvpTab(
                 FlowRow(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     ToggleChip("Oscuros", shadow, setShadow)
                     ToggleChip("Legado", allowElite, setAllowElite)
+                    ToggleChip("No Budget", nonBudget, setNonBudget)
                 }
                 GbaText(
                     "Ranking PvPoke (general) · ${league.label} (≤${league.cap} PC)" +
@@ -185,11 +193,12 @@ private fun MaxTab(
     idx: GameIndex, onSpecies: (String) -> Unit,
     type: String, setType: (String) -> Unit,
     tanks: Boolean, setTanks: (Boolean) -> Unit,
+    nonBudget: Boolean, setNonBudget: (Boolean) -> Unit,
 ) {
     val settings by LocalContainer.current.settings.state.collectAsState()
-    val (results, busy) = rememberComputed(idx, type, tanks, settings.rankLevel, settings.maxMoveLevel) {
-        if (tanks) MaxCalc.topTanks(idx, settings.rankLevel, limit = 40)
-        else MaxCalc.topAttackers(type, idx, settings.rankLevel, settings.maxMoveLevel, limit = 40)
+    val (results, busy) = rememberComputed(idx, type, tanks, settings.rankLevel, settings.maxMoveLevel, nonBudget) {
+        if (tanks) MaxCalc.topTanks(idx, settings.rankLevel, limit = 40, includeNonBudget = nonBudget)
+        else MaxCalc.topAttackers(type, idx, settings.rankLevel, settings.maxMoveLevel, limit = 40, includeNonBudget = nonBudget)
     }
     val list = results.orEmpty()
     val top = list.firstOrNull()?.let { if (tanks) it.bulk else it.maxDamage } ?: 1.0
@@ -199,6 +208,7 @@ private fun MaxTab(
                 FlowRow(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ToggleChip("Atacantes", !tanks, { setTanks(!it) })
                     ToggleChip("Tanques", tanks, setTanks)
+                    ToggleChip("No Budget", nonBudget, setNonBudget)
                 }
                 if (!tanks) TypePicker(type, setType)
                 GbaText(

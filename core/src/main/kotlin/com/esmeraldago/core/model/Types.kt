@@ -62,5 +62,12 @@ object Types {
     fun resistances(defenderTypes: List<String>): List<String> =
         ALL.filter { effectiveness(it, defenderTypes) < 1.0 }
 
+    /** Tipos que le pegan normal (×1). */
+    fun neutrals(defenderTypes: List<String>): List<String> =
+        ALL.filter { effectiveness(it, defenderTypes) == 1.0 }
+
+    /** Al atacar con [moveType]: multiplicador contra cada tipo defensor (un solo tipo). */
+    fun attackChart(moveType: String): Map<String, Double> = ALL.associateWith { effectiveness(moveType, listOf(it)) }
+
     fun es(type: String) = SPANISH[type] ?: type.replaceFirstChar { it.uppercase() }
 }

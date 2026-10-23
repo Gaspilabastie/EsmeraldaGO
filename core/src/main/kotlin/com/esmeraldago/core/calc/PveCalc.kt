@@ -172,6 +172,7 @@ object PveCalc {
         type: String, idx: GameIndex, level: Double = 40.0,
         includeShadow: Boolean = true, includeMega: Boolean = true, includeElite: Boolean = true,
         limit: Int = 60,
+        includeNonBudget: Boolean = true,
     ): List<PveResult> {
         val target = PveTarget(assumeWeakTo = type)
         val out = mutableListOf<PveResult>()
@@ -179,6 +180,7 @@ object PveCalc {
             Interrupt.check()
             if (s.shadow && !includeShadow) continue
             if (s.mega && !includeMega) continue
+            if (s.nonBudget && !includeNonBudget) continue
             val withSpecial = best(s, target, idx, level, chargedType = type, allowElite = includeElite) ?: continue
             out += withSpecial
             if (withSpecial.usesElite) {
