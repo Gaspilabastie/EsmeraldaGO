@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
 $env:JAVA_HOME = "$env:LOCALAPPDATA\DevTools\jdk17"
+$env:PATH = "$env:LOCALAPPDATA\DevTools\git\cmd;$env:PATH"  # gh también necesita git
 $git = "$env:LOCALAPPDATA\DevTools\git\cmd\git.exe"
 $gh = "$env:LOCALAPPDATA\DevTools\gh\bin\gh.exe"
 $utf8 = New-Object System.Text.UTF8Encoding($false)
