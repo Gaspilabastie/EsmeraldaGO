@@ -31,7 +31,8 @@ class SplashScreenshotTest {
                 EmeraldTheme { SplashScreen(ready = false, status = "Cargando datos del juego…", onDone = {}) }
             }
         }
-        rule.waitForIdle()
+        // El arte de Rayquaza se baja de la red: darle unos segundos (si no hay red, sale sin la silueta).
+        repeat(25) { Thread.sleep(300); rule.waitForIdle() }
         var bmp: Bitmap? = null
         rule.runOnUiThread {
             val v = rule.activity.window.decorView.rootView

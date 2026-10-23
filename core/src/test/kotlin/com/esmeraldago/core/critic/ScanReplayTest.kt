@@ -276,7 +276,8 @@ class ScanReplayTest {
     }
 
     private fun JsonElement.toLine(): OcrLine = jsonObject.let {
-        OcrLine(it["text"]!!.jsonPrimitive.content, it.f("left"), it.f("top"), it.f("right"), it.f("bottom"))
+        OcrLine(it["text"]!!.jsonPrimitive.content, it.f("left"), it.f("top"), it.f("right"), it.f("bottom"),
+            it["chars"]?.jsonArray?.map { c -> c.jsonObject.let { o -> com.esmeraldago.core.scan.OcrChar(o["t"]!!.jsonPrimitive.content, o.f("l"), o.f("r")) } }.orEmpty())
     }
     private fun JsonObject.f(k: String) = this[k]!!.jsonPrimitive.float
     private fun JsonObject.str(k: String) = this[k]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content

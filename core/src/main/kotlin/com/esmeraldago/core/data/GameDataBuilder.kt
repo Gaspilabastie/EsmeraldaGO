@@ -41,6 +41,11 @@ class GameDataBuilder {
         val allowedGmax = HashSet<Pair<String, String?>>()
     }
 
+    /** Están en Pokémon GO aunque PvPoke los marque como no lanzados (contrastado con onemorecatch.site, 19/10/2026). */
+    private val RELEASED_IN_GO_NOT_IN_PVPOKE = setOf(
+        "ditto", "shedinja", "spewpa", "hoopa_confined", "cosmog", "cosmoem", "toxtricity_amped", "toxtricity_low_key",
+    )
+
     /** Ids de PvPoke cuyo nombre en el Game Master es distinto. */
     private val pveAliases = mapOf(
         "PYRO_BALL" to "PYROBALL",
@@ -135,6 +140,21 @@ class GameDataBuilder {
                             out.gmax[m.str("pokemonId")!! to m.str("form")] = m.str("move")!!
                         }
                     tid.startsWith("BREAD_") -> collectBreadModes(data, out)
+                    // Formato nuevo (2025+): cada Pokémon trae sus modos Max en "breadOverrides", dentro de
+                    // pokemonSettings o de las plantillas EXTENDED_*. La tabla vieja (BREAD_POKEMON_SCALING_SETTINGS)
+                    // dejó de actualizarse: sin esto faltaban Hitmontop, Rhyhorn, los Regis, Ho-Oh…
+                    else -> (data.obj("pokemonSettings") ?: data.obj("pokemonExtendedSettings"))?.let { ps ->
+                        val pid = ps.str("pokemonId") ?: ps.str("uniqueId") ?: return@let
+                        val form = ps.str("form")?.ifBlank { null }
+                        ps["breadOverrides"]?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { o ->
+                            val mode = o.asJsonObject.str("breadMode") ?: return@forEach
+                            when {
+                                // BREAD_SPECIAL_MODE: Dinamax con ataque Max propio (Zacian, Zamazenta, Eternatus).
+                                mode == "BREAD_MODE" || mode == "BREAD_SPECIAL_MODE" -> out.dynamax += pid to form
+                                mode.startsWith("BREAD_DOUGH_MODE") -> out.allowedGmax += pid to form
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -276,7 +296,9 @@ class GameDataBuilder {
                 family = family?.str("id"),
                 parent = family?.str("parent"),
                 evolutions = family?.strList("evolutions").orEmpty(),
-                released = p["released"]?.asBoolean ?: true,
+                // "released" de PvPoke = usable en PvPoke, no "está en GO": oculta a Ditto, Shedinja, Cosmog… que
+                // sí se consiguen pero no pelean. Las formas solo de combate (Zen, Blade, Busted…) siguen ocultas.
+                released = (p["released"]?.asBoolean ?: true) || id in RELEASED_IN_GO_NOT_IN_PVPOKE,
                 buddyKm = p.int("buddyDistance") ?: 3,
                 // Solo si difiere (Paradox, Código Cero…): casi todos se llaman igual en español.
                 nameEs = p.int("dex")?.let { spanish["pokemon_name_%04d".format(it)] }

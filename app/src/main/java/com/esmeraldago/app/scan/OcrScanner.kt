@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import com.esmeraldago.core.scan.AppraisalBars
 import com.esmeraldago.core.scan.BarMeasure
+import com.esmeraldago.core.scan.OcrChar
 import com.esmeraldago.core.scan.OcrLine
 import com.esmeraldago.core.scan.ScanResult
 import com.esmeraldago.core.scan.ScreenParser
@@ -54,7 +55,11 @@ class OcrScanner(private val context: Context) {
         val h = bitmap.height.toFloat()
         return text.textBlocks.flatMap { it.lines }.mapNotNull { line ->
             val b = line.boundingBox ?: return@mapNotNull null
-            OcrLine(line.text, b.left / w, b.top / h, b.right / w, b.bottom / h)
+            // Posición de cada carácter: con eso se sabe DÓNDE falta un dígito tapado (ver ScreenParser.parseFrames).
+            val chars = line.elements.flatMap { it.symbols }.mapNotNull { s ->
+                s.boundingBox?.let { sb -> OcrChar(s.text, sb.left / w, sb.right / w) }
+            }
+            OcrLine(line.text, b.left / w, b.top / h, b.right / w, b.bottom / h, chars)
         }
     }
 

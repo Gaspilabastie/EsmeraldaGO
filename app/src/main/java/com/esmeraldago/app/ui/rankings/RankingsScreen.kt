@@ -51,7 +51,8 @@ import com.esmeraldago.core.model.Types
 private enum class Tab(val label: String) { PVE("PvE"), PVP("PvP"), MAX("Dinamax") }
 
 /** Convención de DialgaDex: tiers cada 10% respecto del #1. */
-private const val TIER_LEGEND = "Tier (% del #1, estilo GO Hub): S ≥95 · A+ ≥90 · A ≥85 · B+ ≥80 · B ≥75 · C ≥70 · D <70"
+/** El tier se mide contra el #1 del ranking COMPLETO (sin filtros): filtrar no sube de tier a nadie. */
+private const val TIER_LEGEND = "Tier (% del #1 del ranking completo, sin filtros, estilo GO Hub): S ≥95 · A+ ≥90 · A ≥85 · B+ ≥80 · B ≥75 · C ≥70 · D <70"
 
 @Composable
 fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
@@ -97,12 +98,18 @@ private fun PveTab(
 ) {
     val settings by LocalContainer.current.settings.state.collectAsState()
     val level = settings.rankLevel
-    val (results, busy) = rememberComputed(idx, type, shadow, mega, elite, level, nonBudget) {
-        PveCalc.topAttackers(type, idx, level, shadow, mega, elite, limit = 60, includeNonBudget = nonBudget)
+    // Se calcula el ranking completo una vez y los filtros solo ocultan filas: así el tier de cada uno se mide
+    // siempre contra el mismo #1 (el del ranking sin filtros) y no "sube" al apagar categorías.
+    val (full, busy) = rememberComputed(idx, type, level) {
+        PveCalc.topAttackers(type, idx, level, includeShadow = true, includeMega = true, includeElite = true, limit = 400)
     }
+    val results = full?.filter { r ->
+        (shadow || !r.species.shadow) && (mega || !r.species.mega) && (elite || !r.usesElite) && (nonBudget || !r.species.nonBudget)
+    }?.take(60)
 
     val list = results.orEmpty()
-    val top = list.firstOrNull()?.score ?: 1.0
+    val top = full?.firstOrNull()?.score ?: 1.0
+    // El % de DPS sí es contra el #1 que se ve (el #1 de la lista siempre muestra 100%).
     val topDps = list.firstOrNull()?.dps ?: 1.0
     // Los filtros son los primeros ítems de la lista: se van con el scroll (en pantallas chicas no tapan los resultados).
     LazyColumn(Modifier.fillMaxSize()) {
@@ -168,13 +175,13 @@ private fun PvpTab(
                 }
                 GbaText(
                     "Ranking PvPoke (general) · ${league.label} (≤${league.cap} PC)" +
-                        (if (!allowElite) "\nSin los que dependen de un ataque de legado (MT Élite)." else "") + "\n$TIER_LEGEND",
+                        (if (!allowElite) "\nSin los que dependen de un ataque de legado (MT Élite)." else "") + "\n${com.esmeraldago.core.calc.Tier.PVP_LEGEND}",
                     size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp),
                 )
             }
         }
         itemsIndexed(rows, key = { _, r -> r.second.id }) { _, (rank, r, s) ->
-            RankRow(rank, s, onClick = { onSpecies(s.id) }, trailing = { RankValue(r.score, topScore, fmt1(r.score)) }) {
+            RankRow(rank, s, onClick = { onSpecies(s.id) }, trailing = { RankValue(r.score, topScore, fmt1(r.score), tier = com.esmeraldago.core.calc.Tier.pvpOf(rank)) }) {
                 Column {
                     r.moveset.mapNotNull { idx.move(it) }.forEach { MoveLabel(it, s) }
                     r.nonEliteMoveset(s)?.takeIf { it.isNotEmpty() }?.let { alt ->
@@ -196,12 +203,15 @@ private fun MaxTab(
     nonBudget: Boolean, setNonBudget: (Boolean) -> Unit,
 ) {
     val settings by LocalContainer.current.settings.state.collectAsState()
-    val (results, busy) = rememberComputed(idx, type, tanks, settings.rankLevel, settings.maxMoveLevel, nonBudget) {
-        if (tanks) MaxCalc.topTanks(idx, settings.rankLevel, limit = 40, includeNonBudget = nonBudget)
-        else MaxCalc.topAttackers(type, idx, settings.rankLevel, settings.maxMoveLevel, limit = 40, includeNonBudget = nonBudget)
+    val (full, busy) = rememberComputed(idx, type, tanks, settings.rankLevel, settings.maxMoveLevel) {
+        if (tanks) MaxCalc.topTanks(idx, settings.rankLevel, limit = 200)
+        else MaxCalc.topAttackers(type, idx, settings.rankLevel, settings.maxMoveLevel, limit = 200)
     }
+    val results = full?.filter { nonBudget || !it.species.nonBudget }?.take(40)
     val list = results.orEmpty()
-    val top = list.firstOrNull()?.let { if (tanks) it.bulk else it.maxDamage } ?: 1.0
+    // Tier y barra contra el #1 del ranking completo (sin filtros).
+    val top = full?.firstOrNull()?.let { if (tanks) it.bulk else it.maxDamage } ?: 1.0
+    val topShown = list.firstOrNull()?.let { if (tanks) it.bulk else it.maxDamage } ?: 1.0
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "filters") {
             Column {
@@ -228,7 +238,7 @@ private fun MaxTab(
                 Column {
                     MoveLabel(r.fast, r.species)
                     GbaText("→ ${r.maxMoveName}", size = 12.sp, color = Pal.Dynamax)
-                    GbaText((if (tanks) "Aguante" else "Daño") + pctOfTop(value, top).replace(" (", "").replace(")", ""),
+                    GbaText((if (tanks) "Aguante" else "Daño") + pctOfTop(value, topShown).replace(" (", "").replace(")", ""),
                         size = 11.sp, color = Pal.Muted)
                 }
             }

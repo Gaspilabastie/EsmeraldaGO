@@ -363,7 +363,7 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
         else -> null
     }
 
-    private fun whereToGet(s: Species, inRaidsNow: Set<String>): String = when {
+    fun whereToGet(s: Species, inRaidsNow: Set<String>): String = when {
         s.id in inRaidsNow || s.baseId in inRaidsNow -> "¡Está en incursiones ahora!"
         s.shadow && (s.legendary || s.mythical) -> "Incursiones oscuras o Giovanni"
         s.shadow -> "Derrotando al Team GO Rocket"
@@ -496,8 +496,8 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
             for (type in Types.ALL) {
                 val rank = topAttackers(type).distinctBy { it.species.id }.indexOfFirst { it.species.id == s.id } + 1
                 if (rank in 1..10) out += H("Top $rank atacante ${Types.es(type)}${who(s)}", 100 - rank * 5)
-                val maxRank = maxTop(type).indexOfFirst { it.species.id == s.id } + 1
-                if (maxRank in 1..10) out += H("Top $maxRank Dinamax ${Types.es(type)}${who(s)}", 70 - maxRank * 4)
+                // Sin rankings Dinamax: lo que se atrapa en una incursión (normal, mega u oscura) nunca puede
+                // Dinamaxizar; los Dinamax solo salen de las batallas Max.
             }
             for (league in League.entries) {
                 val rank = idx.pvpRank(league, s.id)?.first ?: continue

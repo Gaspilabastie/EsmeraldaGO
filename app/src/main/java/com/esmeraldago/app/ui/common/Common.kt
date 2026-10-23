@@ -76,6 +76,32 @@ private const val SPRITES = "https://raw.githubusercontent.com/PokeAPI/sprites/m
  * Esmeralda (Gen I–III), Negro/Blanco (Gen IV–V), estilo Showdown (pixel, cubre Gen VI–IX) y, como
  * último recurso, el artwork oficial (los pocos Paradox / legendarios recientes sin pixel art).
  */
+/** Formas que en Showdown son la forma base (su sprite no lleva sufijo). */
+private val BASE_FORMS = setOf("altered", "incarnate", "land", "ordinary", "aria", "standard", "normal", "hero", "confined",
+    "average", "plant", "shield", "midday", "baile", "male", "overcast", "core", "fullbelly", "amped", "curly", "solo")
+
+/**
+ * Sprite de la FORMA (Showdown, pixel estilo Negro/Blanco): sin esto Exeggutor de Alola, las megas o Zacian
+ * Espada Suprema mostraban el sprite de la forma base. "Exeggutor (Alolan)" → exeggutor-alola.
+ */
+private fun formSpriteUrl(s: Species, shiny: Boolean): String? {
+    val name = s.name.replace(" (Shadow)", "")
+    val form = Regex("""\((.+)\)""").find(name)?.groupValues?.get(1) ?: return null
+    val base = name.substringBefore(" (").lowercase().replace(Regex("[^a-z0-9]"), "")
+    var f = form.lowercase().replace(Regex("[^a-z0-9 ]"), "").trim()
+    f = when {
+        f == "alolan" -> "alola"; f == "galarian" -> "galar"; f == "hisuian" -> "hisui"; f == "paldean" -> "paldea"
+        f.startsWith("crowned") -> "crowned"
+        f.endsWith(" forme") -> f.removeSuffix(" forme")
+        else -> f
+    }.replace(" ", "")
+    if (f in BASE_FORMS) return null
+    return "https://play.pokemonshowdown.com/sprites/gen5${if (shiny) "-shiny" else ""}/$base-$f.png"
+}
+
+/** Cadena de sprites de una especie: primero el de su forma (si es una forma), después el del número. */
+fun spriteUrls(s: Species, shiny: Boolean = false): List<String> = listOfNotNull(formSpriteUrl(s, shiny)) + spriteUrls(s.dex, shiny)
+
 fun spriteUrls(dex: Int, shiny: Boolean = false): List<String> = buildList {
     val sh = if (shiny) "shiny/" else ""
     when {
@@ -124,9 +150,9 @@ fun Sprite(
     species: Species, size: Dp = 56.dp, shadow: Boolean = species.shadow,
     shiny: Boolean = false, purified: Boolean = false, lucky: Boolean = false,
 ) {
-    val urls = remember(species.dex, shiny) { spriteUrls(species.dex, shiny) }
-    var attempt by remember(species.dex, shiny) { mutableStateOf(0) }
-    var loaded by remember(species.dex, shiny) { mutableStateOf(false) }
+    val urls = remember(species.id, shiny) { spriteUrls(species, shiny) }
+    var attempt by remember(species.id, shiny) { mutableStateOf(0) }
+    var loaded by remember(species.id, shiny) { mutableStateOf(false) }
     val icon = (size * 0.3f).coerceIn(12.dp, 24.dp)
     val context = androidx.compose.ui.platform.LocalContext.current
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {
@@ -172,9 +198,9 @@ fun TierBadge(tier: com.esmeraldago.core.calc.Tier) {
 
 /** Columna derecha de un ranking: tier (relativo al #1), valor y barra relativa al #1. */
 @Composable
-fun RankValue(value: Double, best: Double, text: String, width: Dp = 68.dp) {
+fun RankValue(value: Double, best: Double, text: String, width: Dp = 68.dp, tier: com.esmeraldago.core.calc.Tier? = null) {
     Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(width)) {
-        TierBadge(com.esmeraldago.core.calc.Tier.of(value, best))
+        TierBadge(tier ?: com.esmeraldago.core.calc.Tier.of(value, best))
         GbaText(text, size = 16.sp)
         com.esmeraldago.app.ui.theme.HpBar((value / best).toFloat(), Modifier.fillMaxWidth(), height = 5.dp)
     }
@@ -192,7 +218,9 @@ fun SpeciesTags(s: Species, gmax: Boolean = false, dynamax: Boolean = false) {
     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         if (s.shadow) Tag("OSCURO", Pal.Shadow)
         if (s.mega) Tag("MEGA", Pal.Blue)
-        if (gmax) Tag("G-MAX", Pal.Dynamax) else if (dynamax) Tag("DMAX", Pal.Dynamax)
+        // Charizard, Pikachu, Eevee… tienen las dos: Dinamax común y Gigamax.
+        if (dynamax) Tag("DMAX", Pal.Dynamax)
+        if (gmax) Tag("G-MAX", Pal.Dynamax)
     }
 }
 

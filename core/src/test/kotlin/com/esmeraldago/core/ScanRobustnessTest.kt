@@ -261,6 +261,35 @@ class ScanRobustnessTest {
         assertEquals(top.candidates.toSet(), merged.candidates.toSet())
     }
 
+    /** Línea "CP…" con la posición de cada carácter; [hidden] = casilleros tapados por el Pokémon. */
+    private fun cpLine(cp: Int, hidden: Set<Int>): OcrLine {
+        val chars = mutableListOf(com.esmeraldago.core.scan.OcrChar("C", 0.34f, 0.37f), com.esmeraldago.core.scan.OcrChar("P", 0.37f, 0.40f))
+        cp.toString().forEachIndexed { i, d ->
+            val x0 = 0.42f + i * 0.045f
+            if (i !in hidden) chars += com.esmeraldago.core.scan.OcrChar(d.toString(), x0, x0 + 0.04f)
+        }
+        return OcrLine(chars.joinToString("") { it.text }, 0.34f, 0.055f, chars.last().right, 0.085f, chars)
+    }
+
+    @Test
+    fun liveFrames_occludedDigitsAreRebuiltByPosition() {
+        // Exeggutor de Alola: el cuello tapa el 3er dígito en un fotograma y el 2do en otro. El texto es igual en
+        // los dos ("CP245") y ninguno solo alcanza; por posición: "24_5" + "2_45" = 2445.
+        val s = idx["exeggutor_alolan"]!!; val lv = 30.0; val iv = Ivs(13, 14, 12)
+        val real = PokeMath.cp(s, lv, iv, idx)
+        assertEquals(4, real.toString().length)
+        fun frame(hidden: Set<Int>) = detail(s, lv, iv, "GRASS / DRAGON", "EXEGGCUTE CANDY", cpText = null, extra = listOf(cpLine(real, hidden)))
+        val one = parser.parseFrames(listOf(frame(setOf(2))))
+        assertTrue(one.cp == null || one.cp == real, "un solo fotograma no puede inventar: ${one.cp}")
+        val both = parser.parseFrames(listOf(frame(setOf(2)), frame(setOf(1))))
+        assertEquals(real, both.cp)
+        assertEquals("exeggutor_alolan", both.species?.id)
+        assertTrue(both.candidates.any { it.ivs == iv })
+        // Con el último dígito tapado en TODOS los fotogramas no hay hueco visible: igual no inventa.
+        val tail = parser.parseFrames(listOf(frame(setOf(3)), frame(setOf(3))))
+        assertTrue(tail.cp == null || tail.cp == real, "sin ver el último dígito: ${tail.cp}")
+    }
+
     // ------------------------------------------------------------------ cliente en español
 
     /** La ficha con los textos del juego en español (PC, PS, MÁS PODER, "CARAMELOS X", tipos y ataques en español). */

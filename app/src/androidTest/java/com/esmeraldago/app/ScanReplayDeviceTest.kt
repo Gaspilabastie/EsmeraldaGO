@@ -51,6 +51,9 @@ class ScanReplayDeviceTest {
                     a.lines.forEach { l ->
                         add(buildJsonObject {
                             put("text", l.text); put("left", l.left); put("top", l.top); put("right", l.right); put("bottom", l.bottom)
+                            if (l.chars.isNotEmpty()) put("chars", buildJsonArray {
+                                l.chars.forEach { c -> add(buildJsonObject { put("t", c.text); put("l", c.left); put("r", c.right) }) }
+                            })
                         })
                     }
                 })

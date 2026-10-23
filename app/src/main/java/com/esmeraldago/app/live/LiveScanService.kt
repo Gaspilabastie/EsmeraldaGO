@@ -152,11 +152,15 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     private suspend fun captureBest(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
         var best = analyzeFrame(parser) ?: return null
         if (best.result.screen == ScreenType.UNKNOWN) return best
-        var tries = 0
-        while ((best.result.cp == null || best.result.cpInferred) && tries++ < 3) {
-            delay(350)
-            val a = analyzeFrame(parser) ?: break
-            if (a.result.screen != ScreenType.UNKNOWN && cpQuality(a.result) > cpQuality(best.result)) best = a
+        // PC tapado o que no cuadra: el Pokémon se mueve y tapa dígitos distintos en cada fotograma. Se usan
+        // TODOS (no "el mejor"): el parser ubica cada dígito en su casillero y vota (ScreenParser.parseFrames).
+        if (best.result.cp == null || best.result.cpInferred) {
+            val frames = mutableListOf(best)
+            repeat(3) {
+                delay(350)
+                analyzeFrame(parser)?.takeIf { it.result.screen != ScreenType.UNKNOWN && it.result.hp == best.result.hp }?.let { frames += it }
+            }
+            if (frames.size > 1) best = best.copy(result = parser.parseFrames(frames.map { it.lines }, best.bars))
         }
         val gestures = LiveGestureService.instance
         if (best.result.screen == ScreenType.DETAIL && best.result.fast == null && gestures != null &&
@@ -173,10 +177,6 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         }
         return best
     }
-
-    /** PC leído y coherente > PC deducido > sin PC; a igualdad, con IV posibles. */
-    private fun cpQuality(r: com.esmeraldago.core.scan.ScanResult) =
-        (if (r.cp != null && !r.cpInferred) 20 else if (r.cp != null) 10 else 0) + if (r.candidates.isNotEmpty()) 1 else 0
 
     private suspend fun analyzeFrame(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
         val bmp = capturer?.grab() ?: return null

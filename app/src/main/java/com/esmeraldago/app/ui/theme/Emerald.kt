@@ -420,29 +420,39 @@ fun ToggleChip(label: String, checked: Boolean, onToggle: (Boolean) -> Unit, mod
 /** Pestañas: se reparten en filas para que la seleccionada siempre esté a la vista. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier,
+                  /** Pestañas de igual ancho en una sola fila (no se parten en dos renglones con letra grande). */
+                  fill: Boolean = false) {
+    if (fill) {
+        Row(modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.forEach { o -> PixelTab(label(o), o == selected, { onSelect(o) }, Modifier.weight(1f)) }
+        }
+        return
+    }
     FlowRow(
         modifier.fillMaxWidth().padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        options.forEach { o ->
-            val sel = o == selected
-            Box(
-                Modifier
-                    .heightIn(min = 40.dp)
-                    .background(Pal.FrameOuter, SmallPixelShape)
-                    .padding(2.dp)
-                    .background(if (sel) Pal.Select else Pal.Window, SmallPixelShape)
-                    .selectable(selected = sel, role = Role.Tab) { onSelect(o) }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (sel) GbaText("▶", size = 12.sp)
-                    GbaText(label(o), size = 14.sp, maxLines = 1)
-                }
-            }
+        options.forEach { o -> PixelTab(label(o), o == selected, { onSelect(o) }) }
+    }
+}
+
+@Composable
+private fun PixelTab(text: String, sel: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .heightIn(min = 48.dp)
+            .background(Pal.FrameOuter, SmallPixelShape)
+            .padding(2.dp)
+            .background(if (sel) Pal.Select else Pal.Window, SmallPixelShape)
+            .selectable(selected = sel, role = Role.Tab, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (sel) GbaText("▶", size = 12.sp)
+            GbaText(text, size = 14.sp, maxLines = 1)
         }
     }
 }
@@ -450,9 +460,9 @@ fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect:
 /**
  * Selector de tipos: grilla de 6×3 (los 18 tipos siempre visibles). Si no entra el nombre completo
  * (pantalla angosta o letra grande) se usan abreviaturas de 3 letras.
+ * Elige un tipo ([selected]) o varios ([selectedSet], p. ej. los dos tipos de un defensor).
  */
 @Composable
-/** Elige un tipo ([selected]) o varios ([selectedSet], p. ej. los dos tipos de un defensor). */
 fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier, types: List<String> = Types.ALL,
                selectedSet: Set<String>? = null) {
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 6.dp)) {

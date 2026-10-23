@@ -10,8 +10,19 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** Una línea de texto reconocida, con coordenadas normalizadas (0..1) respecto de la imagen. */
-data class OcrLine(val text: String, val left: Float, val top: Float, val right: Float, val bottom: Float) {
+/** Un carácter reconocido con su posición horizontal (normalizada), para ubicar dígitos tapados. */
+data class OcrChar(val text: String, val left: Float, val right: Float) {
+    val centerX get() = (left + right) / 2
+}
+
+/**
+ * Una línea de texto reconocida, con coordenadas normalizadas (0..1) respecto de la imagen.
+ * [chars]: los caracteres con su posición (si el OCR los da); sirven para saber DÓNDE falta un dígito.
+ */
+data class OcrLine(
+    val text: String, val left: Float, val top: Float, val right: Float, val bottom: Float,
+    val chars: List<OcrChar> = emptyList(),
+) {
     val centerY get() = (top + bottom) / 2
     val centerX get() = (left + right) / 2
     val height get() = bottom - top
@@ -202,6 +213,87 @@ class ScreenParser(private val idx: GameIndex) {
         return if (reading.appraisalScreen && appraisal == null) {
             r.copy(problem = r.problem ?: "No se pudieron medir las barras de la valoración.")
         } else r
+    }
+
+    /**
+     * Varios fotogramas de la MISMA ficha (modo en vivo): se juntan sus pistas y el PC se reconstruye dígito a
+     * dígito. El Pokémon se mueve y tapa dígitos distintos en cada fotograma ("24_5", "2_45"), pero el OCR lee
+     * "245" en todos: el texto no alcanza. Con la posición de cada carácter se ubica cada dígito en su casillero
+     * (contando desde la "P" del rótulo) y se vota casillero por casillero; si alguno no se vio nunca, se prueban
+     * los 10 dígitos y quedan los PC que cuadran con los PS y el polvo.
+     */
+    fun parseFrames(frames: List<List<OcrLine>>, bars: AppraisalBars? = null): ScanResult {
+        val results = frames.map { parse(it, bars) }
+        val pokemon = results.filter { it.screen != ScreenType.UNKNOWN && it.reading != null }
+        if (pokemon.isEmpty()) return results.first()
+        val reading = pokemon.map { it.reading!! }.reduce { a, b -> a.mergedWith(b) }
+        val appraisal = pokemon.firstNotNullOfOrNull { it.appraisal }
+
+        // 1) Algún fotograma leyó un PC que cuadra (rótulo visible, IV posibles): gana el más votado.
+        val solid = pokemon.filter { it.cp != null && !it.cpInferred && it.candidates.isNotEmpty() }
+            .groupingBy { it.cp!! }.eachCount()
+        if (solid.isNotEmpty()) {
+            val cp = solid.maxBy { it.value }.key
+            return resolve(reading.copy(cp = cp, cpDigits = cp.toString(), cpLabeled = true), appraisal)
+        }
+        // 2) Reconstruir por posiciones.
+        val seen = digitPattern(frames)
+        if (seen != null) {
+            fun fits(p: String) = expandPattern(p).mapNotNull { cp ->
+                resolve(reading.copy(cp = cp, cpDigits = cp.toString(), cpLabeled = true), appraisal)
+                    .takeIf { it.cp == cp && !it.cpInferred && it.candidates.isNotEmpty() }
+            }
+            // Un dígito tapado en el extremo en TODOS los fotogramas no deja hueco: probar un casillero más.
+            val (pattern, options) = listOf(seen, "$seen?", "?$seen").filter { it.length <= 4 }
+                .asSequence().map { it to fits(it) }.firstOrNull { it.second.isNotEmpty() } ?: (seen to emptyList())
+            if (options.size == 1) {
+                val r = options.first()
+                return if (pattern.contains('?')) r.copy(cpInferred = true,
+                    problem = r.problem ?: "PC reconstruido de varios fotogramas (${pattern.replace('?', '_')} → ${r.cp}): revisalo.")
+                else r
+            }
+        }
+        // 3) Lo que se pueda con las pistas juntas (el PC tapado queda para la valoración o a mano).
+        return resolve(reading, appraisal)
+    }
+
+    /** "24?5": dígitos por casillero, combinando fotogramas; '?' = casillero que no se vio en ninguno. */
+    internal fun digitPattern(frames: List<List<OcrLine>>): String? {
+        data class Seen(val x: Float, val d: Char)
+        data class Frame(val labelRight: Float, val digits: List<Seen>)
+        val fs = frames.mapNotNull { lines ->
+            val line = lines.filter { it.top < 0.2f && it.chars.isNotEmpty() }.firstOrNull { l ->
+                cpRegex.containsMatchIn(l.text) || cpOnlyRegex.matches(l.text)
+            } ?: return@mapNotNull null
+            val cs = line.chars
+            val label = cs.indexOfLast { it.text.equals("P", true) || it.text.equals("C", true) }.takeIf { it >= 0 } ?: return@mapNotNull null
+            val digits = cs.drop(label + 1).mapNotNull { c ->
+                fixDigits(c.text).singleOrNull()?.takeIf(Char::isDigit)?.let { Seen(c.centerX, it) }
+            }
+            if (digits.isEmpty()) null else Frame(cs[label].right, digits)
+        }
+        if (fs.isEmpty()) return null
+        // Paso entre dígitos: la menor distancia entre vecinos es "uno al lado del otro".
+        val deltas = fs.flatMap { f -> f.digits.zipWithNext { a, b -> b.x - a.x } }.filter { it > 0 }
+        val minDelta = deltas.minOrNull() ?: return fs.maxBy { it.digits.size }.digits.joinToString("") { it.d.toString() }
+        val pitch = deltas.filter { it < minDelta * 1.4f }.average().toFloat()
+        // Casillero 0: el primer dígito más cerca del rótulo en cualquier fotograma.
+        val offset0 = fs.minOf { it.digits.first().x - it.labelRight }
+        val votes = HashMap<Int, MutableMap<Char, Int>>()
+        fs.forEach { f ->
+            f.digits.forEach { s ->
+                val slot = Math.round((s.x - f.labelRight - offset0) / pitch)
+                if (slot in 0..4) votes.getOrPut(slot) { HashMap() }.merge(s.d, 1, Int::plus)
+            }
+        }
+        val last = votes.keys.maxOrNull() ?: return null
+        return (0..last).joinToString("") { slot -> votes[slot]?.maxBy { it.value }?.key?.toString() ?: "?" }
+    }
+
+    private fun expandPattern(p: String): List<Int> {
+        var acc = listOf("")
+        for (c in p) acc = if (c == '?') acc.flatMap { a -> ('0'..'9').map { a + it } } else acc.map { it + c }
+        return acc.filter { !it.startsWith("0") }.mapNotNull { it.toIntOrNull() }.filter { it in 10..9999 }
     }
 
     /** Combina una pantalla de detalle con la de valoración (IV exactos). */
