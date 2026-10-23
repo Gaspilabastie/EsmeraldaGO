@@ -34,16 +34,17 @@ class FontCompareTest {
 
     @Test
     fun compareFonts() {
-        val fonts = File("src/test/fontcandidates").listFiles { f -> f.extension == "ttf" }!!.sortedBy { it.name }
+        // FONT_DIR permite comparar candidatas fuera del repo.
+        val dir = System.getenv("FONT_DIR")?.let(::File) ?: File("src/test/fontcandidates")
+        val fonts = dir.listFiles { f -> f.extension == "ttf" }!!.sortedBy { it.name }
         rule.setContent {
             Column(Modifier.fillMaxSize().background(Color(0xFFF8F8F8)).padding(8.dp)) {
                 fonts.forEach { f ->
                     val fam = FontFamily(Font(f))
-                    Text(f.nameWithoutExtension, color = Color.Red, fontSize = 10.sp)
-                    Text("PC 3455 · IV 15/12/8 · 28% 82%", style = gbaStyle(16.sp).copy(fontFamily = fam))
-                    Text("22/10/2026 · Nº150 · BCS · Machamp", style = gbaStyle(16.sp).copy(fontFamily = fam))
-                    Text("Débil a: Eléctrico, Planta · DPS 49.2 TDO 1909", style = gbaStyle(12.sp).copy(fontFamily = fam))
-                    Text("IV PVP VENENO VOLADOR MOVIMIENTOS UV VU", style = gbaStyle(16.sp).copy(fontFamily = fam))
+                    Text(f.nameWithoutExtension, color = Color(0xFF3868C8), fontSize = 9.sp)
+                    Text("PC 3455 · IV 15/12/8 · 5S 8B 0O 1lI 2Z", style = gbaStyle(16.sp).copy(fontFamily = fam))
+                    Text("¿Qué atrapar? ¡Subí a Machamp! Nº150", style = gbaStyle(16.sp).copy(fontFamily = fam))
+                    Text("Débil a: Eléctrico, Planta · DPS 49.2 TDO 1909 · VU UV", style = gbaStyle(12.sp).copy(fontFamily = fam))
                 }
             }
         }

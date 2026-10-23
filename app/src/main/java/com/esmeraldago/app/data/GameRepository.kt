@@ -63,7 +63,7 @@ class GameRepository(
             } catch (t: Throwable) {
                 // Archivo dañado: se aparta y se usan los datos incluidos en la app.
                 local.baseFile.renameTo(File(local.baseFile.path + ".bad"))
-                _updateStatus.value = "✖ Los datos descargados estaban dañados; se usan los incluidos en la app."
+                _updateStatus.value = "Los datos descargados estaban dañados; se usan los incluidos en la app."
             }
         }
         return try {
@@ -103,9 +103,9 @@ class GameRepository(
                 }
                 dir.deleteRecursively()
                 _state.value = ready(data)
-                _updateStatus.value = "✔ Datos actualizados (${data.species.size} especies)"
+                _updateStatus.value = "Datos actualizados (${data.species.size} especies)"
             } catch (t: Throwable) {
-                _updateStatus.value = "✖ No se actualizó (se conservan los datos actuales): ${t.message}"
+                _updateStatus.value = "No se actualizó (se conservan los datos actuales): ${t.message}"
             } finally {
                 _updating.value = false
             }

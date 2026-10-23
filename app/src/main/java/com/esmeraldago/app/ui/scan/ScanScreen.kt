@@ -207,17 +207,17 @@ private fun DraftCard(
                 )
             }
             Box(Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-                GbaText("✕", size = 18.sp, color = Pal.Red)
+                GbaText("×", size = 18.sp, color = Pal.Muted)
             }
         }
-        d.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Red) }
+        d.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Warn) }
         val c = d.result.candidates
         when {
             s == null || c.isEmpty() -> Unit
-            d.result.ivExact -> GbaText("IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%) ✔", size = 15.sp)
+            d.result.ivExact -> GbaText("IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%), exactos", size = 15.sp)
             else -> {
                 GbaText("IV ${d.result.ivRangeText} · ${c.size} combinaciones posibles: elegí una o agregá la captura de valoración.",
-                    size = 12.sp, color = Pal.Red)
+                    size = 12.sp, color = Pal.Warn)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     c.sortedByDescending { it.ivs.total }.take(8).forEach { cand ->
                         val sel = cand.ivs.atk == p.ivAtk && cand.ivs.def == p.ivDef && cand.ivs.sta == p.ivSta && cand.level == p.level

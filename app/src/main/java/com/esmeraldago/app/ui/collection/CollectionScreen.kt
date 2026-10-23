@@ -103,7 +103,7 @@ fun CollectionScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onAdd: () -> 
                         GbaText("PC${p.cp}", size = 12.sp, maxLines = 1)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val color = when {
-                                p.ivPercent >= 98 -> Pal.Red
+                                p.ivPercent >= 98 -> Pal.Good
                                 p.ivPercent >= 80 -> Pal.Gold
                                 else -> Pal.Muted
                             }

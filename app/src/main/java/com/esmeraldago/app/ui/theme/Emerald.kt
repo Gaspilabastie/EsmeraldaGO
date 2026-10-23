@@ -94,7 +94,12 @@ object Pal {
     val HpYellow = Color(0xFFF8E038)
     val HpRed = Color(0xFFF85838)
     val BarBg = Color(0xFF506858)
+    /** Solo para errores y acciones destructivas (LIBERAR, DETENER). */
     val Red = Color(0xFFE04038)
+    /** Avisos que no son errores (IV estimado, falta una MT, se pasa de PC): ámbar oscuro, legible y discreto. */
+    val Warn = Color(0xFF9A6418)
+    /** Algo bueno que destacar (jefe que rinde en rankings, IV casi perfecto). */
+    val Good = Color(0xFF1E7A4A)
     val Blue = Color(0xFF3868C8)
     val Shadow = Color(0xFF7848A8)
     val Gold = Color(0xFFE8B030)
@@ -112,8 +117,9 @@ object Pal {
     fun type(t: String) = TYPE[t] ?: Color.Gray
 }
 
-/** Pixelify Sans (OFL). */
-val PixelFont = FontFamily(Font(R.font.pixelify, FontWeight.Normal))
+/** Galmuri11 (OFL), pixel font inspirada en las de Nintendo; su grilla es de 12 px por em. */
+val PixelFont = FontFamily(Font(R.font.galmuri11, FontWeight.Normal))
+private const val FONT_GRID = 12f
 
 /** Bordes "cortados" como los marcos pixelados de GBA. */
 val PixelShape = CutCornerShape(4.dp)
@@ -140,7 +146,7 @@ fun EmeraldTheme(content: @Composable () -> Unit) {
 @Composable
 fun gbaStyle(size: TextUnit, color: Color = Pal.Text, shadow: Color = Pal.TextShadow): TextStyle {
     val px = with(LocalDensity.current) { size.toPx() }
-    val off = (px / 15f).roundToInt().coerceAtLeast(1).toFloat()
+    val off = (px / FONT_GRID).roundToInt().coerceAtLeast(1).toFloat()
     return TextStyle(
         fontFamily = PixelFont,
         fontSize = size,

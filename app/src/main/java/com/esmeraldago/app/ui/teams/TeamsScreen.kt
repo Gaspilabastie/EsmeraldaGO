@@ -99,7 +99,7 @@ private fun CandidateRow(c: PvpCandidate, role: String, idx: GameIndex, onOwned:
             c.moveset.mapNotNull { idx.move(it) }.forEach { m ->
                 MoveLabel(m, c.species, 12)
                 if (m.id in c.missingMoves) {
-                    GbaText("  ↳ te falta: " + if (c.species.isElite(m.id)) "requiere MT Élite" else "usá una MT de ataque", size = 11.sp, color = Pal.Red)
+                    GbaText("  ↳ te falta: " + if (c.species.isElite(m.id)) "requiere MT Élite" else "usá una MT de ataque", size = 11.sp, color = Pal.Warn)
                 }
             }
             if (c.needsEvolve) GbaText("Los ataques se definen al evolucionar.", size = 11.sp, color = Pal.Muted)

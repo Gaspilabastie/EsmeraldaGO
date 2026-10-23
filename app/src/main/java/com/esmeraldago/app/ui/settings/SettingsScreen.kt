@@ -137,7 +137,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         "• Game Master: PokeMiners\n" +
                         "• Incursiones actuales: LeekDuck vía ScrapedDuck\n" +
                         "• Sprites: PokeAPI (Pokémon Esmeralda / Negro y Blanco)\n" +
-                        "• Fuente: Pixelify Sans (OFL)\n" +
+                        "• Fuente: Galmuri11 de Lee Minseo (OFL)\n" +
                         "• Fórmula PvE: DPS/TDO \"comprehensive\" de GamePress\n\n" +
                         "App personal, no afiliada a Niantic, Nintendo ni The Pokémon Company.",
                     size = 12.sp,

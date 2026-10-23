@@ -126,7 +126,7 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                     IvBar("DEF", p.ivDef)
                     IvBar("PS", p.ivSta)
                     GbaText("IV ${p.ivPercent}%" + if (!p.ivExact) " (estimado: escaneá la valoración para precisarlo)" else "",
-                        size = 12.sp, color = if (p.ivExact) Pal.Text else Pal.Red)
+                        size = 12.sp, color = if (p.ivExact) Pal.Text else Pal.Warn)
                 }
 
                 WindowBox(Modifier.fillMaxWidth()) {
@@ -147,8 +147,8 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                             GbaText(
                                 "IV rank #${l.iv.rank} (${fmt1(l.iv.percentOfBest)}%) · Nv ${fmtLevel(l.iv.level)} → PC ${l.iv.cp}" +
                                     (l.metaRank?.let { "\nMeta: #$it (${fmt1(l.metaScore ?: 0.0)})" } ?: "\nFuera del ranking de la liga") +
-                                    if (l.tooHigh) "\n⚠ Ya superó el tope de PC" else "",
-                                size = 12.sp, color = if (l.tooHigh) Pal.Red else Pal.Muted,
+                                    if (l.tooHigh) "\nYa pasa el tope de PC de la liga" else "",
+                                size = 12.sp, color = Pal.Muted,
                             )
                             Spacer(Modifier.height(4.dp))
                         }

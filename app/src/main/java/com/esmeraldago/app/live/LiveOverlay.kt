@@ -118,7 +118,7 @@ fun LivePanel(container: AppContainer, service: LiveScanService) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     GbaText("ESCANEO EN VIVO", size = 15.sp, modifier = Modifier.weight(1f))
                     Box(Modifier.size(40.dp).clickable { service.showPanel(false) }, contentAlignment = Alignment.Center) {
-                        GbaText("✕", size = 18.sp)
+                        GbaText("×", size = 18.sp)
                     }
                 }
                 val info = status ?: when {
@@ -143,16 +143,16 @@ fun LivePanel(container: AppContainer, service: LiveScanService) {
                             GbaText(
                                 when {
                                     draft.result.candidates.isEmpty() -> "IV: no cuadran (revisá en la app)"
-                                    draft.result.ivExact -> "IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%) ✔"
+                                    draft.result.ivExact -> "IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%), exactos"
                                     else -> "IV ${draft.result.ivRangeText} · ${draft.result.candidates.size} opciones: sacá la VALORACIÓN"
                                 },
-                                size = 13.sp, color = if (draft.result.ivExact) Pal.Text else Pal.Red,
+                                size = 13.sp, color = if (draft.result.ivExact) Pal.Text else Pal.Warn,
                             )
                             if (draft.result.screen != ScreenType.APPRAISAL && draft.sources < 2 && draft.result.fast == null)
                                 GbaText("Bajá hasta los ataques para leerlos.", size = 11.sp, color = Pal.Muted)
                         }
                     }
-                    draft.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Red) }
+                    draft.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Warn) }
                     // Ranks PvP rápidos (también como su evolución)
                     val (pvp, _) = rememberComputed(p, ready.reco) {
                         League.entries.mapNotNull { lg ->

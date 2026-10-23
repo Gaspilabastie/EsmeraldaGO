@@ -88,7 +88,7 @@ fun RaidsScreen(onBack: () -> Unit, onBoss: (String, String) -> Unit) {
                             RankRow(0, s, onClick = { onBoss(s.id, r.tier.name) }, title = r.name) {
                                 GbaText("Débil a: " + Types.weaknesses(s.types).joinToString(", ") { Types.es(it) },
                                     size = 12.sp, color = Pal.Muted)
-                                highlights?.get(r.name)?.forEach { h -> GbaText("★ $h", size = 12.sp, color = Pal.Red) }
+                                highlights?.get(r.name)?.forEach { h -> GbaText("★ $h", size = 12.sp, color = Pal.Good) }
                             }
                         }
                     }
