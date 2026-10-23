@@ -23,7 +23,9 @@ $gh = "$env:LOCALAPPDATA\DevTools\gh\bin\gh.exe"
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 
 function Invoke-Checked([string]$what, [scriptblock]$cmd) {
-    & $cmd
+    # PowerShell 5.1 convierte cualquier línea de stderr (avisos de git/gradle) en error: se juzga por el código de salida.
+    $ErrorActionPreference = 'Continue'
+    & $cmd 2>&1 | ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) { throw "Falló: $what (código $LASTEXITCODE)" }
 }
 
