@@ -1,0 +1,507 @@
+package com.esmeraldago.app.ui.theme
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.em
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.esmeraldago.app.R
+import com.esmeraldago.core.model.Types
+import kotlinx.coroutines.delay
+
+/** Paleta inspirada en los menús de Pokémon Esmeralda (GBA). */
+object Pal {
+    val Bg = Color(0xFFB8E0C8)
+    val BgStripe = Color(0xFFA8D4B8)
+    val Header = Color(0xFF289860)
+    val HeaderDark = Color(0xFF186840)
+    val HeaderLight = Color(0xFF58C890)
+    val Window = Color(0xFFF8F8F8)
+    val FrameOuter = Color(0xFF404850)
+    val FrameInner = Color(0xFF98B0C8)
+    val Text = Color(0xFF404040)
+    val TextShadow = Color(0xFFD0D0C8)
+    val TextLight = Color(0xFFF8F8F8)
+    val TextLightShadow = Color(0xFF585858)
+    val Muted = Color(0xFF5C5C5C)
+    val Select = Color(0xFFF8F0B0)
+    val Cursor = Color(0xFF383838)
+    val HpGreen = Color(0xFF70F8A8)
+    val HpGreenDark = Color(0xFF58D080)
+    val HpYellow = Color(0xFFF8E038)
+    val HpRed = Color(0xFFF85838)
+    val BarBg = Color(0xFF506858)
+    val Red = Color(0xFFE04038)
+    val Blue = Color(0xFF3868C8)
+    val Shadow = Color(0xFF7848A8)
+    val Gold = Color(0xFFE8B030)
+    val Dynamax = Color(0xFFE02868)
+
+    val TYPE = mapOf(
+        "normal" to Color(0xFFA8A878), "fire" to Color(0xFFF08030), "water" to Color(0xFF6890F0),
+        "electric" to Color(0xFFF8D030), "grass" to Color(0xFF78C850), "ice" to Color(0xFF98D8D8),
+        "fighting" to Color(0xFFC03028), "poison" to Color(0xFFA040A0), "ground" to Color(0xFFE0C068),
+        "flying" to Color(0xFFA890F0), "psychic" to Color(0xFFF85888), "bug" to Color(0xFFA8B820),
+        "rock" to Color(0xFFB8A038), "ghost" to Color(0xFF705898), "dragon" to Color(0xFF7038F8),
+        "dark" to Color(0xFF705848), "steel" to Color(0xFFB8B8D0), "fairy" to Color(0xFFEE99AC),
+    )
+
+    fun type(t: String) = TYPE[t] ?: Color.Gray
+}
+
+/** Pixelify Sans (OFL). */
+val PixelFont = FontFamily(Font(R.font.pixelify, FontWeight.Normal))
+
+/** Bordes "cortados" como los marcos pixelados de GBA. */
+val PixelShape = CutCornerShape(4.dp)
+val SmallPixelShape = CutCornerShape(2.dp)
+
+@Composable
+fun EmeraldTheme(content: @Composable () -> Unit) {
+    val colors = lightColorScheme(
+        primary = Pal.Header, onPrimary = Pal.TextLight, secondary = Pal.Blue,
+        background = Pal.Bg, surface = Pal.Window, onSurface = Pal.Text, onBackground = Pal.Text,
+    )
+    MaterialTheme(colorScheme = colors) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalTextStyle provides gbaStyle(16.sp),
+            content = content,
+        )
+    }
+}
+
+/**
+ * Estilo de texto GBA: la sombra se desplaza exactamente 1 "píxel de fuente" (entero en px reales)
+ * hacia abajo-derecha, como en Esmeralda, para que los bordes queden nítidos en cualquier densidad.
+ */
+@Composable
+fun gbaStyle(size: TextUnit, color: Color = Pal.Text, shadow: Color = Pal.TextShadow): TextStyle {
+    val px = with(LocalDensity.current) { size.toPx() }
+    val off = (px / 15f).roundToInt().coerceAtLeast(1).toFloat()
+    return TextStyle(
+        fontFamily = PixelFont,
+        fontSize = size,
+        color = color,
+        shadow = Shadow(shadow, Offset(off, off), 0f),
+        lineHeight = size * 1.25f,
+    )
+}
+
+/** Texto con la sombra dura típica de GBA. */
+@Composable
+fun GbaText(
+    text: String,
+    modifier: Modifier = Modifier,
+    size: TextUnit = 16.sp,
+    color: Color = Pal.Text,
+    shadow: Color = if (color == Pal.TextLight) Pal.TextLightShadow else Pal.TextShadow,
+    maxLines: Int = Int.MAX_VALUE,
+    align: TextAlign? = null,
+) {
+    Text(
+        text, modifier = modifier,
+        style = gbaStyle(size, color, shadow),
+        maxLines = maxLines, overflow = TextOverflow.Ellipsis, textAlign = align,
+    )
+}
+
+/** Fondo verde a rayas diagonales. */
+@Composable
+fun EmeraldBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(Pal.Bg)
+            .drawBehind {
+                val step = 24.dp.toPx()
+                val w = 8.dp.toPx()
+                var x = -size.height
+                while (x < size.width) {
+                    drawLine(Pal.BgStripe, Offset(x, size.height), Offset(x + size.height, 0f), strokeWidth = w)
+                    x += step
+                }
+            },
+        content = content,
+    )
+}
+
+/** Ventana blanca con doble marco, como los menús de Esmeralda. */
+@Composable
+fun WindowBox(
+    modifier: Modifier = Modifier,
+    padding: Dp = 10.dp,
+    background: Color = Pal.Window,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier
+            .background(Pal.FrameOuter, PixelShape)
+            .padding(2.dp)
+            .background(Pal.FrameInner, PixelShape)
+            .padding(3.dp)
+            .background(background, SmallPixelShape)
+            .padding(padding),
+        content = content,
+    )
+}
+
+/** Barra de título verde con botón "volver". */
+@Composable
+fun TitleBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Pal.Header)
+            .drawBehind {
+                drawRect(Pal.HeaderLight, size = Size(size.width, 3.dp.toPx()))
+                drawRect(Pal.HeaderDark, Offset(0f, size.height - 4.dp.toPx()), Size(size.width, 4.dp.toPx()))
+            }
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onBack != null) {
+            Box(
+                Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 40.dp)
+                    .background(Pal.HeaderDark, SmallPixelShape)
+                    .clickable(onClickLabel = "Volver", role = Role.Button, onClick = onBack)
+                    .semantics { contentDescription = "Volver" }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) { GbaText("◀ B", size = 14.sp, color = Pal.TextLight) }
+            Spacer(Modifier.width(10.dp))
+        }
+        GbaText(title.uppercase(), size = 20.sp, color = Pal.TextLight, modifier = Modifier.weight(1f), maxLines = 1)
+        actions()
+    }
+}
+
+/** false desactiva las animaciones infinitas (cursor, texto letra por letra); lo usan los tests de captura. */
+val LocalAnimations = staticCompositionLocalOf { true }
+
+/** Cursor ▶ fijo de los menús de Esmeralda (en el juego no parpadea). */
+@Composable
+fun BlinkingCursor(visible: Boolean = true, char: String = "▶") {
+    GbaText(char, color = Pal.Cursor, modifier = Modifier.alpha(if (visible) 1f else 0f))
+}
+
+/** Flecha ▼ que rebota, como la que indica "seguir" en los diálogos de Esmeralda. */
+@Composable
+fun BouncingArrow() {
+    var up by remember { mutableStateOf(false) }
+    val animate = LocalAnimations.current
+    LaunchedEffect(animate) { while (animate) { delay(300); up = !up } }
+    GbaText("▼", color = Pal.Cursor, modifier = Modifier.offset(y = if (up) (-2).dp else 0.dp))
+}
+
+/** Opción de menú con cursor ▶ (estilo menú START). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun MenuItem(
+    text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, size: TextUnit = 18.sp,
+    onLongClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .background(if (selected) Pal.Select else Color.Transparent, SmallPixelShape)
+            .combinedClickable(role = Role.Button, onLongClick = onLongClick, onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(20.dp)) { BlinkingCursor(selected) }
+        GbaText(text, size = size)
+    }
+}
+
+/** Cuadro de diálogo con texto letra por letra y flecha ▼. Tocarlo muestra todo el texto (como apretar A). */
+@Composable
+fun DialogBox(text: String, modifier: Modifier = Modifier, speedMs: Long = 18) {
+    val animate = LocalAnimations.current
+    var shown by remember(text) { mutableIntStateOf(if (animate) 0 else text.length) }
+    LaunchedEffect(text) {
+        if (!animate) return@LaunchedEffect
+        while (shown < text.length) { delay(speedMs); shown++ }
+    }
+    WindowBox(
+        modifier.fillMaxWidth().clickable(
+            interactionSource = remember { MutableInteractionSource() }, indication = null,
+        ) { shown = text.length },
+        padding = 12.dp,
+    ) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+            GbaText(text.take(shown), size = 17.sp)
+            if (shown >= text.length) Box(Modifier.align(Alignment.BottomEnd)) { BouncingArrow() }
+        }
+    }
+}
+
+/** Color de texto legible sobre un fondo dado (texto oscuro en colores claros). */
+fun readableOn(bg: Color): Pair<Color, Color> =
+    if (bg.luminance() > 0.45f) Pal.Text to Color(0x66FFFFFF) else Pal.TextLight to Pal.TextLightShadow
+
+@Composable
+fun TypeBadge(type: String, modifier: Modifier = Modifier, small: Boolean = false, abbreviated: Boolean = false) {
+    val c = Pal.type(type)
+    val (fg, sh) = readableOn(c)
+    val label = Types.es(type).uppercase().let { if (abbreviated) it.take(3) else it }
+    Box(
+        modifier
+            .background(Color(0xFF303030), SmallPixelShape)
+            .padding(1.dp)
+            .background(c, SmallPixelShape)
+            .padding(horizontal = if (small) 4.dp else 6.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        GbaText(label, size = if (small) 11.sp else 12.sp, color = fg, shadow = sh, maxLines = 1)
+    }
+}
+
+/** Etiqueta chica de color (OSCURO, MEGA, LEGADO…). */
+@Composable
+fun Tag(text: String, color: Color, modifier: Modifier = Modifier) {
+    val (fg, sh) = readableOn(color)
+    Box(
+        modifier
+            .background(color, SmallPixelShape)
+            .padding(horizontal = 5.dp, vertical = 1.dp)
+    ) { GbaText(text, size = 11.sp, color = fg, shadow = sh, maxLines = 1) }
+}
+
+/** Cuadro de elección SÍ / NO al estilo Esmeralda. */
+@Composable
+fun YesNoDialog(question: String, onYes: () -> Unit, onNo: () -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onNo) {
+        Column(horizontalAlignment = Alignment.End) {
+            WindowBox(Modifier.widthIn(max = 160.dp), padding = 4.dp) {
+                MenuItem("SÍ", selected = true, onClick = onYes)
+                MenuItem("NO", selected = false, onClick = onNo)
+            }
+            Spacer(Modifier.height(6.dp))
+            WindowBox(Modifier.fillMaxWidth(), padding = 12.dp) { GbaText(question, size = 17.sp) }
+        }
+    }
+}
+
+/** Barra estilo "PS" de GBA. */
+@Composable
+fun HpBar(fraction: Float, modifier: Modifier = Modifier, height: Dp = 8.dp, color: Color? = null) {
+    val f = if (fraction.isNaN()) 0f else fraction.coerceIn(0f, 1f)
+    val c = color ?: when {
+        f > 0.5f -> Pal.HpGreen
+        f > 0.2f -> Pal.HpYellow
+        else -> Pal.HpRed
+    }
+    Box(
+        modifier
+            .height(height + 4.dp)
+            .background(Pal.Cursor, SmallPixelShape)
+            .padding(2.dp)
+            .background(Pal.BarBg)
+    ) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(f).background(c))
+        Box(Modifier.fillMaxWidth(f).height(height / 3).background(Color.White.copy(alpha = 0.35f)))
+    }
+}
+
+/** Barra de un IV (0..15), verde si es 15. */
+@Composable
+fun IvBar(label: String, value: Int, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        GbaText(label, size = 13.sp, modifier = Modifier.width(56.dp))
+        HpBar(value / 15f, Modifier.weight(1f), color = if (value == 15) Pal.HpRed else Pal.Gold)
+        GbaText(value.toString().padStart(2), size = 14.sp, modifier = Modifier.width(28.dp), align = TextAlign.End)
+    }
+}
+
+@Composable
+fun PixelButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = Pal.Header, enabled: Boolean = true) {
+    Box(
+        modifier
+            .alpha(if (enabled) 1f else 0.5f)
+            .background(Pal.FrameOuter, PixelShape)
+            .padding(2.dp)
+            .background(color, PixelShape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) { GbaText(text, color = Pal.TextLight, size = 15.sp, maxLines = 1) }
+}
+
+/** Interruptor tipo casilla de opciones de GBA. */
+@Composable
+fun ToggleChip(label: String, checked: Boolean, onToggle: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .heightIn(min = 40.dp)
+            .background(if (checked) Pal.Select else Pal.Window, SmallPixelShape)
+            .border(2.dp, Pal.FrameOuter, SmallPixelShape)
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onToggle)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GbaText(if (checked) "■" else "□", size = 14.sp)
+        Spacer(Modifier.width(4.dp))
+        GbaText(label, size = 13.sp, maxLines = 1)
+    }
+}
+
+/** Pestañas: se reparten en filas para que la seleccionada siempre esté a la vista. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun <T> PixelTabs(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    FlowRow(
+        modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        options.forEach { o ->
+            val sel = o == selected
+            Box(
+                Modifier
+                    .heightIn(min = 40.dp)
+                    .background(Pal.FrameOuter, SmallPixelShape)
+                    .padding(2.dp)
+                    .background(if (sel) Pal.Select else Pal.Window, SmallPixelShape)
+                    .selectable(selected = sel, role = Role.Tab) { onSelect(o) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (sel) GbaText("▶", size = 12.sp)
+                    GbaText(label(o), size = 14.sp, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Selector de tipos: grilla de 6×3 (los 18 tipos siempre visibles). Si no entra el nombre completo
+ * (pantalla angosta o letra grande) se usan abreviaturas de 3 letras.
+ */
+@Composable
+fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier, types: List<String> = Types.ALL) {
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
+        val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+        val short = maxWidth / 6 < 62.dp * fontScale
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            types.chunked(6).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    row.forEach { t ->
+                        val sel = t == selected
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 40.dp)
+                                .border(3.dp, if (sel) Pal.Cursor else Color.Transparent, SmallPixelShape)
+                                .selectable(selected = sel, role = Role.RadioButton) { onSelect(t) }
+                                .padding(4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { TypeBadge(t, Modifier.fillMaxWidth(), small = true, abbreviated = short) }
+                    }
+                    repeat(6 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LoadingBox(text: String = "Calculando…", modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+        WindowBox(Modifier.widthIn(max = 280.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                GbaText(text)
+                Spacer(Modifier.width(6.dp))
+                BlinkingCursor(true, "…")
+            }
+        }
+    }
+}
+
+@Composable
+fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .padding(top = 8.dp, bottom = 4.dp)
+            .background(Pal.Header, SmallPixelShape)
+            .padding(horizontal = 10.dp, vertical = 3.dp)
+    ) { GbaText(text.uppercase(), size = 14.sp, color = Pal.TextLight) }
+}
+
+@Composable
+fun Labeled(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        GbaText(label, size = 14.sp, color = Pal.Muted, modifier = Modifier.weight(1f))
+        GbaText(value, size = 14.sp)
+    }
+}
+
+@Composable
+fun Dot(color: Color, size: Dp = 8.dp) = Box(Modifier.size(size).background(color, SmallPixelShape))

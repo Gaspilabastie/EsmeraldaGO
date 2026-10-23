@@ -1,0 +1,127 @@
+package com.esmeraldago.core
+
+import com.esmeraldago.core.model.GameData
+import com.esmeraldago.core.model.League
+import com.esmeraldago.core.model.Move
+import com.esmeraldago.core.model.PvpRank
+import com.esmeraldago.core.model.Species
+import kotlin.math.roundToInt
+
+/** Índices de búsqueda sobre [GameData]. Se construye una vez al cargar los datos. */
+class GameIndex(val data: GameData) {
+    val species: Map<String, Species> = data.species.associateBy { it.id }
+    val moves: Map<String, Move> = data.moves.associateBy { it.id }
+
+    /** Especies "elegibles" para rankings: liberadas y sin duplicados raros. */
+    val released: List<Species> = data.species.filter { it.released && it.atk > 0 }
+
+    private val pvpIndex: Map<String, Map<String, Pair<Int, PvpRank>>> =
+        data.pvp.mapValues { (_, list) -> list.mapIndexed { i, r -> r.id to ((i + 1) to r) }.toMap() }
+
+    private val byFamily: Map<String, List<Species>> =
+        data.species.filter { it.family != null }.groupBy { it.family!! }
+
+    fun cpm(level: Double): Double =
+        data.cpm[((level - 1) * 2).roundToInt().coerceIn(0, data.cpm.lastIndex)]
+
+    val maxLevel: Double get() = 1.0 + (data.cpm.size - 1) / 2.0
+
+    operator fun get(id: String): Species? = species[id]
+    fun move(id: String?): Move? = id?.let { moves[it] }
+
+    fun pvpRanking(league: League): List<PvpRank> = data.pvp[league.key].orEmpty()
+
+    /** (puesto 1-based, entrada) en el ranking PvP de la liga, o null si no figura. */
+    fun pvpRank(league: League, id: String): Pair<Int, PvpRank>? = pvpIndex[league.key]?.get(id)
+
+    fun shadowOf(s: Species): Species? = species["${s.baseId}_shadow"]?.takeIf { !s.mega }
+    fun megasOf(s: Species): List<Species> = data.species.filter { it.mega && it.baseId == s.baseId }
+
+    fun family(s: Species): List<Species> = s.family?.let { byFamily[it] }.orEmpty()
+
+    /** Todas las evoluciones posteriores (directas e indirectas), sin shadow/mega. */
+    fun descendants(s: Species): List<Species> {
+        val out = mutableListOf<Species>()
+        val queue = ArrayDeque(s.evolutions)
+        while (queue.isNotEmpty()) {
+            val next = species[queue.removeFirst()] ?: continue
+            if (out.any { it.id == next.id }) continue
+            out += next
+            queue.addAll(next.evolutions)
+        }
+        return out
+    }
+
+    /** Variante con el mismo estado (shadow o normal) de otra especie, ej. evolución de un shadow. */
+    fun sameVariant(target: Species, shadow: Boolean): Species =
+        if (shadow) species["${target.baseId}_shadow"] ?: target else target
+
+    /** Busca una especie por nombre tolerando el orden de palabras ("Mega Charizard X" == "Charizard (Mega X)"). */
+    fun findByName(name: String): Species? {
+        val key = nameKey(name)
+        return nameIndex[key] ?: nameIndex[key.replace(" forme", "").replace(" form", "")] ?: aliasIndex[key]?.firstOrNull()
+    }
+
+    /** Formas "jugables" (sin shadow/mega) agrupadas por número de Pokédex. */
+    val byDex: Map<Int, List<Species>> = data.species.filter { !it.shadow && !it.mega && it.released }.groupBy { it.dex }
+
+    /**
+     * Todas las especies que el juego podría mostrar con este nombre: el juego muestra "Giratina", "Marowak"
+     * o "Nidoran" sin la forma, así que se devuelven todas las formas de ese Nº.
+     */
+    fun findAllByName(name: String): List<Species> {
+        val key = nameKey(name)
+        val direct = listOfNotNull(nameIndex[key]?.takeIf { !it.shadow && !it.mega }) + aliasIndex[key].orEmpty()
+        return direct.flatMap { s -> listOf(s) + byDex[s.dex].orEmpty() }.distinctBy { it.id }
+    }
+
+    private val nameIndex: Map<String, Species> by lazy {
+        val m = HashMap<String, Species>()
+        // Las formas normales tienen prioridad sobre shadow/mega cuando el nombre coincide.
+        data.species.sortedBy { if (it.shadow || it.mega) 1 else 0 }.forEach { s ->
+            m.putIfAbsent(nameKey(s.name), s)
+            m.putIfAbsent(nameKey(s.id.replace('_', ' ')), s)
+        }
+        m
+    }
+
+    /** Nombre visible en el juego (sin la forma entre paréntesis ni símbolos de género) -> especies. */
+    private val aliasIndex: Map<String, List<Species>> by lazy {
+        data.species.filter { !it.shadow && !it.mega }.flatMap { s ->
+            val shown = s.name.substringBefore(" (")
+            // "Nidoran Female" / "Nidoran♀" -> el OCR suele leer solo "Nidoran".
+            val noGender = shown.replace("♀", "").replace("♂", "").replace(Regex("\\s+(Female|Male)$"), "")
+            listOf(nameKey(shown), nameKey(noGender)).distinct().map { it to s }
+        }.groupBy({ it.first }, { it.second })
+    }
+
+    // ---------------------------------------------------------------- caché PvP (acotada, por índice)
+
+    private val statProductCache = object : LinkedHashMap<String, FloatArray>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 1200
+    }
+
+    /**
+     * Stat products ordenados (desc) de los 4096 IV para especie/liga como Float (~16 KB c/u, máx. 1200 ≈ 20 MB).
+     * Alcanza para el rank: los stat products vecinos difieren mucho más que la precisión de un Float.
+     */
+    fun cachedStatProducts(key: String, compute: () -> FloatArray): FloatArray {
+        synchronized(statProductCache) { statProductCache[key] }?.let { return it }
+        val v = compute()
+        synchronized(statProductCache) { statProductCache[key] = v }
+        return v
+    }
+
+    /** Diagnóstico: cantidad de tablas PvP en caché y vaciado manual. */
+    fun statProductCacheSize(): Int = synchronized(statProductCache) { statProductCache.size }
+    fun clearStatProductCache() = synchronized(statProductCache) { statProductCache.clear() }
+
+    companion object {
+        fun nameKey(name: String): String = name.lowercase()
+            .replace("♀", " female").replace("♂", " male")
+            .replace(Regex("[^a-z0-9 ]"), " ")
+            .split(' ').filter { it.isNotBlank() }
+            .map { if (it == "alola") "alolan" else if (it == "galar") "galarian" else if (it == "hisui") "hisuian" else it }
+            .sorted().joinToString(" ")
+    }
+}

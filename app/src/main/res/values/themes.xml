@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.EsmeraldaGO" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#FF186840</item>
+        <item name="android:navigationBarColor">#FF186840</item>
+        <item name="android:windowBackground">@color/emerald_bg</item>
+    </style>
+    <color name="emerald_bg">#FFB8E0C8</color>
+</resources>

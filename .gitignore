@@ -1,0 +1,11 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+data-cache/
+# APKs compilados (se publican como releases de GitHub) y claves de firma
+*.apk
+*.keystore
+*.jks

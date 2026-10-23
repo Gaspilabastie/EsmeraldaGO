@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Mitad superior esmeralda -->
+    <path android:fillColor="#FF38C078" android:pathData="M28,54 A26,26 0 0,1 80,54 Z" />
+    <!-- Brillo pixel -->
+    <path android:fillColor="#FFA8F0C8" android:pathData="M38,38 h6 v4 h-6 z M34,44 h4 v4 h-4 z" />
+    <!-- Mitad inferior blanca -->
+    <path android:fillColor="#FFF8F8F8" android:pathData="M28,54 A26,26 0 0,0 80,54 Z" />
+    <!-- Banda central -->
+    <path android:fillColor="#FF303030" android:pathData="M28,51 h52 v6 h-52 z" />
+    <!-- Contorno -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF303030"
+        android:strokeWidth="4"
+        android:pathData="M54,28 A26,26 0 1,1 53.99,28 Z" />
+    <!-- Botón -->
+    <path
+        android:fillColor="#FFF8F8F8"
+        android:strokeColor="#FF303030"
+        android:strokeWidth="3"
+        android:pathData="M54,46 A8,8 0 1,1 53.99,46 Z" />
+</vector>
