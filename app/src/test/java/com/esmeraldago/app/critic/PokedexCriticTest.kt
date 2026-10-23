@@ -26,6 +26,8 @@ import com.esmeraldago.app.ui.theme.LocalAnimations
 import com.esmeraldago.core.calc.MaxCalc
 import com.esmeraldago.core.calc.PveCalc
 import com.esmeraldago.core.model.League
+import org.junit.Assume
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,6 +44,9 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w411dp-h3200dp-xhdpi")
 class PokedexCriticTest {
+    /** Tarda ~4 min: solo corre con CRITIC_SCREENS=1 (no en cada publicación). */
+    @Before fun onlyOnDemand() = Assume.assumeTrue(System.getenv("CRITIC_SCREENS") != null)
+
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
 
