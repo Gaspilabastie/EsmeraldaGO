@@ -26,6 +26,8 @@ class GameDataBuilder {
 
     private class MinersData {
         val pveMoves = HashMap<String, PveMove>()
+        /** Nombre del movimiento en el GM -> su número (V0013_MOVE_WRAP -> 13), la clave de los textos traducidos. */
+        val moveNumbers = HashMap<String, Int>()
         var cpmWhole: List<Double> = emptyList()
         /** (pokemonId, form?) con modo Dynamax normal. */
         val dynamax = HashSet<Pair<String, String?>>()
@@ -46,12 +48,19 @@ class GameDataBuilder {
         "TECHNO_BLAST_DOUSE" to "TECHNO_BLAST_WATER",
     )
 
+    private fun minersKey(id: String) = when {
+        id.startsWith("HIDDEN_POWER") -> "HIDDEN_POWER" // el GM tiene un solo Hidden Power
+        else -> pveAliases[id] ?: id
+    }
+
     private fun pveFor(id: String, fast: Boolean, miners: MinersData): PveMove? {
-        val key = when {
-            id.startsWith("HIDDEN_POWER") -> "HIDDEN_POWER" // el GM tiene un solo Hidden Power
-            else -> pveAliases[id] ?: id
-        }
+        val key = minersKey(id)
         return if (fast) miners.pveMoves["${key}_FAST"] ?: miners.pveMoves[key] else miners.pveMoves[key]
+    }
+
+    private fun moveNumber(id: String, fast: Boolean, miners: MinersData): Int? {
+        val key = minersKey(id)
+        return (if (fast) miners.moveNumbers["${key}_FAST"] else null) ?: miners.moveNumbers[key]
     }
 
     /** Movimientos aprendibles que quedaron sin datos PvE (se informan al generar). */
@@ -62,12 +71,14 @@ class GameDataBuilder {
         pokeminersGamemaster: InputStream,
         rankings: Map<League, InputStream>,
         sourceVersion: String,
+        /** Textos del juego en español (i18n de PokeMiners): clave -> texto. Para leer el cliente en español. */
+        spanish: Map<String, String> = emptyMap(),
     ): GameData {
         val miners = parseMiners(pokeminersGamemaster)
         val pvpoke = pvpokeGamemaster.reader(Charsets.UTF_8).use { JsonParser.parseReader(it).asJsonObject }
 
-        val moves = parseMoves(pvpoke["moves"].asJsonArray, miners)
-        val species = parseSpecies(pvpoke["pokemon"].asJsonArray, miners)
+        val moves = parseMoves(pvpoke["moves"].asJsonArray, miners, spanish)
+        val species = parseSpecies(pvpoke["pokemon"].asJsonArray, miners, spanish)
         val pvp = rankings.mapKeys { it.key.key }.mapValues { (_, s) -> parseRankings(s) }
 
         return GameData(
@@ -98,7 +109,9 @@ class GameDataBuilder {
                 val data = obj["data"]?.asJsonObject ?: continue
                 when {
                     moveTemplate.matches(tid) -> data.obj("moveSettings")?.let { ms ->
-                        val name = moveTemplate.find(tid)!!.groupValues[2]
+                        val match = moveTemplate.find(tid)!!
+                        val name = match.groupValues[2]
+                        out.moveNumbers[name] = match.groupValues[1].toInt()
                         out.pveMoves[name] = PveMove(
                             power = ms.double("power") ?: 0.0,
                             durationMs = ms.int("durationMs") ?: 1000,
@@ -164,7 +177,7 @@ class GameDataBuilder {
 
     // ---------------------------------------------------------------- PvPoke
 
-    private fun parseMoves(arr: JsonArray, miners: MinersData): List<Move> = arr.mapNotNull { el ->
+    private fun parseMoves(arr: JsonArray, miners: MinersData, spanish: Map<String, String>): List<Move> = arr.mapNotNull { el ->
         val m = el.asJsonObject
         val id = m.str("moveId") ?: return@mapNotNull null
         val pvpEnergyCost = m.int("energy") ?: 0
@@ -185,10 +198,13 @@ class GameDataBuilder {
             pvpPower = pvpPower,
             pvpEnergy = if (fast) (m.int("energyGain") ?: 0) else pvpEnergyCost,
             pvpTurns = turns,
+            // Las variantes "_PLUS" de PvPoke son el mismo ataque con otra potencia: mismo nombre en el juego.
+            nameEs = (moveNumber(id, fast, miners) ?: moveNumber(id.removeSuffix("_PLUS"), fast, miners))
+                ?.let { spanish["move_name_%04d".format(it)] },
         )
     }
 
-    private fun parseSpecies(arr: JsonArray, miners: MinersData): List<Species> {
+    private fun parseSpecies(arr: JsonArray, miners: MinersData, spanish: Map<String, String>): List<Species> {
         val raw = arr.map { it.asJsonObject }
         val ids = raw.mapNotNull { it.str("speciesId") }.toHashSet()
 
@@ -262,6 +278,9 @@ class GameDataBuilder {
                 evolutions = family?.strList("evolutions").orEmpty(),
                 released = p["released"]?.asBoolean ?: true,
                 buddyKm = p.int("buddyDistance") ?: 3,
+                // Solo si difiere (Paradox, Código Cero…): casi todos se llaman igual en español.
+                nameEs = p.int("dex")?.let { spanish["pokemon_name_%04d".format(it)] }
+                    ?.takeIf { it != (p.str("speciesName") ?: id).substringBefore(" (") },
             )
         }
     }

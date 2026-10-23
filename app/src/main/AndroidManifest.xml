@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Saber si hay Wi-Fi: los sprites y los datos del juego se bajan solos solo así -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Escaneo en vivo: burbuja flotante sobre Pokémon GO + captura de pantalla -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

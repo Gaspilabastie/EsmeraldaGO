@@ -58,6 +58,8 @@ data class Species(
     val evolutions: List<String> = emptyList(),
     val released: Boolean = true,
     val buddyKm: Int = 3,
+    /** Nombre en el juego en español, solo cuando difiere ("Great Tusk" → "Colmilargo"). */
+    val nameEs: String? = null,
 ) {
     /** Requiere MT Élite (legado / evento). */
     fun isElite(moveId: String) = moveId in elite
@@ -86,6 +88,8 @@ data class Move(
     val pvpPower: Double,
     val pvpEnergy: Int,
     val pvpTurns: Int,
+    /** Nombre en el juego en español ("Wrap" → "Constricción"), para leer el cliente en español. */
+    val nameEs: String? = null,
 )
 
 @Serializable

@@ -97,7 +97,9 @@ class GameIndex(
             val shown = s.name.substringBefore(" (")
             // "Nidoran Female" / "Nidoran♀" -> el OCR suele leer solo "Nidoran".
             val noGender = shown.replace("♀", "").replace("♂", "").replace(Regex("\\s+(Female|Male)$"), "")
-            listOf(nameKey(shown), nameKey(noGender)).distinct().map { it to s }
+            // + el nombre en el juego en español, cuando difiere ("Colmilargo" = Great Tusk).
+            listOfNotNull(nameKey(shown), nameKey(noGender), s.nameEs?.let { nameKey(it.replace("♀", "").replace("♂", "")) })
+                .distinct().map { it to s }
         }.groupBy({ it.first }, { it.second })
     }
 

@@ -117,6 +117,16 @@ class GameRepository(
         }
     }
 
+    /**
+     * Al abrir la app: si los datos tienen más de una semana y hay Wi-Fi, se actualizan solos (son ~22 MB).
+     * Si falla, quedan los actuales y el error se ve en Opciones como en una actualización manual.
+     */
+    fun refreshIfStale(maxAgeMs: Long = 7L * 24 * 3600 * 1000) {
+        val ready = _state.value as? GameState.Ready ?: return
+        val age = System.currentTimeMillis() - (if (usingDownloadedData) local.baseFile.lastModified() else ready.idx.data.generatedAt)
+        if (age > maxAgeMs && context.onUnmeteredNetwork()) update()
+    }
+
     fun resetToBundled() = scope.launch(Dispatchers.IO) {
         lock.withLock {
             local.delete()

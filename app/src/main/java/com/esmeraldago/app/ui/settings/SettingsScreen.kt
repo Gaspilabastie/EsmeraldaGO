@@ -60,6 +60,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             LiveScanBox()
 
+            FeedbackBox()
+
             WindowBox(Modifier.fillMaxWidth()) {
                 SectionTitle("Datos del juego")
                 (game as? GameState.Ready)?.idx?.data?.let { d ->
@@ -188,6 +190,37 @@ private fun AppUpdateBox() {
                 "permitir que EsmeraldaGO instale apps.",
             size = 11.sp, color = Pal.Muted,
         )
+    }
+}
+
+/**
+ * Reportar un bug o sugerir algo: abre en el navegador un "issue" de GitHub ya completado con la versión y el
+ * teléfono (editable antes de enviar). Se envía con tu cuenta de GitHub; la app no guarda ninguna clave.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun FeedbackBox() {
+    val updates = LocalContainer.current.updates
+    val uriHandler = LocalUriHandler.current
+    fun open(kind: String, title: String, label: String, body: String) {
+        val info = "\n\n---\nEsmeraldaGO ${updates.currentVersion} · Android ${android.os.Build.VERSION.RELEASE} · " +
+            "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        val q = { s: String -> java.net.URLEncoder.encode(s, "UTF-8") }
+        uriHandler.openUri("${updates.issuesUrl}/new?labels=${q(label)}&title=${q("$kind: $title")}&body=${q(body + info)}")
+    }
+    WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Reportar o sugerir")
+        GbaText("Abre GitHub con el reporte ya armado (versión y teléfono); lo revisás y lo enviás con tu cuenta.",
+            size = 12.sp, color = Pal.Muted)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(top = 6.dp)) {
+            PixelButton("REPORTAR BUG", {
+                open("Bug", "", "bug", "**Qué pasó:**\n\n**Qué esperabas:**\n\n**Pasos para repetirlo:**\n1. \n")
+            }, color = Pal.Red)
+            PixelButton("SUGERIR", {
+                open("Idea", "", "enhancement", "**Qué te gustaría:**\n\n**Para qué lo usarías:**\n")
+            }, color = Pal.Gold)
+        }
     }
 }
 

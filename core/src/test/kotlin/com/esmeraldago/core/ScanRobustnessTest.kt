@@ -261,6 +261,71 @@ class ScanRobustnessTest {
         assertEquals(top.candidates.toSet(), merged.candidates.toSet())
     }
 
+    // ------------------------------------------------------------------ cliente en español
+
+    /** La ficha con los textos del juego en español (PC, PS, MÁS PODER, "CARAMELOS X", tipos y ataques en español). */
+    private fun detailEs(s: Species, level: Double, iv: Ivs, types: String, candy: String, moves: List<String>, shadow: Boolean = false) = buildList {
+        val hp = PokeMath.hp(s, level, iv, idx)
+        add(l("PC${PokeMath.cp(s, level, iv, idx)}", 0.34f, 0.055f, 0.59f, 0.03f))
+        add(l(s.name.substringBefore(" ("), 0.35f, 0.402f, 0.65f, 0.027f))
+        add(l("$hp/$hp PS", 0.42f, 0.455f, 0.58f, 0.010f))
+        add(l("12,3kg", 0.12f, 0.562f, 0.30f, 0.019f)); add(l("PESO", 0.15f, 0.590f, 0.26f, 0.010f))
+        add(l(types, 0.39f, 0.590f, 0.64f, 0.010f))
+        add(l("1,2m", 0.74f, 0.564f, 0.89f, 0.014f)); add(l("ALTURA", 0.76f, 0.590f, 0.86f, 0.010f))
+        add(l("37.427", 0.15f, 0.662f, 0.29f, 0.017f)); add(l("POLVOS ESTELARES", 0.10f, 0.690f, 0.33f, 0.008f))
+        add(l(candy, 0.42f, 0.690f, 0.62f, 0.009f))
+        val pu = if (shadow) 0.823f else 0.758f
+        if (shadow) add(l("PURIFICACIÓN", 0.20f, 0.758f, 0.34f, 0.012f))
+        add(l("MÁS PODER", 0.16f, pu, 0.38f, 0.013f))
+        add(l(PokeMath.shownDust(level, shadow).let { String.format(Locale.GERMANY, "%,d", it) }, 0.57f, pu - 0.002f, 0.66f, 0.017f))
+        add(l("GIMNASIOS E INCURSIONES", 0.20f, 0.880f, 0.48f, 0.013f))
+        moves.forEachIndexed { i, m -> add(l(m, 0.10f, 0.905f + i * 0.04f, 0.40f, 0.02f)) }
+    }
+
+    @Test
+    fun spanishClient_detail() {
+        val s = idx["gengar"]!!; val lv = 30.0; val iv = Ivs(14, 12, 14)
+        val shadowTail = idx.move("SHADOW_CLAW")!!.nameEs!!
+        val ball = idx.move("SHADOW_BALL")!!.nameEs!!
+        val r = parser.parse(detailEs(s, lv, iv, "FANTASMA / VENENO", "CARAMELOS GASTLY", listOf(shadowTail, ball)))
+        assertEquals(ScreenType.DETAIL, r.screen)
+        assertEquals("gengar", r.species?.id)
+        assertEquals(PokeMath.cp(s, lv, iv, idx), r.cp)
+        assertEquals(PokeMath.shownDust(lv), r.dust)
+        assertEquals(setOf("ghost", "poison"), r.reading?.types)
+        assertEquals("SHADOW_CLAW", r.fast)
+        assertEquals(listOf("SHADOW_BALL"), r.charged)
+        assertTrue(r.candidates.any { it.ivs == iv })
+    }
+
+    @Test
+    fun spanishClient_shadowWithoutAccents() {
+        // El OCR a veces pierde las tildes: "ELECTRICO", "MAS PODER".
+        val s = idx["luxio"]!!; val lv = 8.0; val iv = Ivs(10, 10, 10)
+        val lines = detailEs(s, lv, iv, "ELECTRICO", "CARAMELOS SHINX", emptyList(), shadow = true)
+            .map { if (it.text == "MÁS PODER") it.copy(text = "MAS PODER") else it }
+        val r = parser.parse(lines)
+        assertEquals("luxio", r.species?.id)
+        assertTrue(r.shadow)
+        assertEquals(961, r.dust)
+    }
+
+    @Test
+    fun spanishClient_appraisal() {
+        val s = idx["sylveon"]!!; val lv = 30.0; val iv = Ivs(15, 14, 11)
+        val hp = PokeMath.hp(s, lv, iv, idx)
+        val lines = listOf(
+            l("PC${PokeMath.cp(s, lv, iv, idx)}", 0.34f, 0.054f, 0.59f, 0.031f), l("Kira9", 0.42f, 0.397f, 0.58f, 0.029f),
+            l("$hp/$hp PS", 0.43f, 0.453f, 0.58f, 0.014f), l("HADA", 0.45f, 0.630f, 0.58f, 0.010f),
+            l("Ataque", 0.12f, 0.732f, 0.22f, 0.011f), l("Defensa", 0.12f, 0.773f, 0.24f, 0.012f), l("PS", 0.12f, 0.815f, 0.16f, 0.010f),
+            l("Este Sylveon fue atrapado el 5/9/2026", 0.07f, 0.903f, 0.69f, 0.018f),
+        )
+        val r = parser.parse(lines, bars(iv))
+        assertEquals(ScreenType.APPRAISAL, r.screen)
+        assertEquals("sylveon", r.species?.id)
+        assertTrue(r.ivExact)
+    }
+
     @Test
     fun truncatedMove_byNavigationBar() {
         val s = idx["zekrom"]!!

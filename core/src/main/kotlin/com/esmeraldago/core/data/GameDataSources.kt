@@ -15,6 +15,8 @@ object GameDataSources {
     const val POKEMINERS_GAMEMASTER = "https://raw.githubusercontent.com/PokeMiners/game_masters/master/latest/latest.json"
     const val POKEMINERS_TIMESTAMP = "https://raw.githubusercontent.com/PokeMiners/game_masters/master/latest/timestamp.txt"
     const val CURRENT_RAIDS = "https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/raids.min.json"
+    /** Textos del juego en español (nombres de ataques y especies), para leer el cliente en español. */
+    const val SPANISH_TEXTS = "https://raw.githubusercontent.com/PokeMiners/pogo_assets/master/Texts/Latest%20APK/JSON/i18n_spanish.json"
 
     fun rankings(league: League) = "$PVPOKE/rankings/all/overall/rankings-${league.cap}.json"
 
@@ -86,13 +88,16 @@ object GameDataSources {
         val rankingFiles = League.entries.associateWith { fetch(rankings(it), "rankings-${it.cap}.json") }
         val pvpokeFile = fetch(PVPOKE_GAMEMASTER, "pvpoke-gamemaster.json")
         val minersFile = fetch(POKEMINERS_GAMEMASTER, "pokeminers-gamemaster.json")
+        // Opcional: sin los textos en español todo funciona igual, salvo leer el juego en español.
+        val spanish = runCatching { parseTexts(fetch(SPANISH_TEXTS, "i18n-spanish.json")) }
+            .onFailure { progress("No se bajaron los textos en español: ${it.message}") }.getOrDefault(emptyMap())
 
         progress("Procesando datos…")
         val builder = GameDataBuilder()
         val streams = rankingFiles.mapValues { it.value.inputStream().buffered() }
         val data = try {
             pvpokeFile.inputStream().buffered().use { pv ->
-                minersFile.inputStream().buffered().use { mi -> builder.build(pv, mi, streams, version) }
+                minersFile.inputStream().buffered().use { mi -> builder.build(pv, mi, streams, version, spanish) }
             }
         } finally {
             streams.values.forEach { runCatching { it.close() } }
@@ -100,6 +105,30 @@ object GameDataSources {
         if (builder.missingPve.isNotEmpty()) progress("Sin datos PvE (se aproximan): ${builder.missingPve.joinToString()}")
         validate(data)
         return data
+    }
+
+    /**
+     * Textos del juego (i18n de PokeMiners: {"data": [clave, texto, clave, texto…]}); se quedan solo los nombres
+     * de ataques y especies (son ~70.000 textos en total).
+     */
+    fun parseTexts(file: File): Map<String, String> {
+        val out = HashMap<String, String>()
+        com.google.gson.stream.JsonReader(file.reader(Charsets.UTF_8)).use { r ->
+            r.beginObject()
+            while (r.hasNext()) {
+                if (r.nextName() != "data") { r.skipValue(); continue }
+                r.beginArray()
+                while (r.hasNext()) {
+                    val k = r.nextString()
+                    if (!r.hasNext()) break
+                    val v = r.nextString()
+                    if (k.startsWith("move_name_") || k.startsWith("pokemon_name_")) out[k] = v
+                }
+                r.endArray()
+            }
+            r.endObject()
+        }
+        return out
     }
 
     /** Rechaza datos incompletos para no reemplazar unos buenos por unos rotos. */

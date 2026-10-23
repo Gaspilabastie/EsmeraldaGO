@@ -48,6 +48,7 @@ class UpdateRepository(private val context: Context, private val scope: Coroutin
 
     val currentVersion: String get() = BuildConfig.VERSION_NAME
     val repoUrl: String get() = "https://github.com/${BuildConfig.UPDATE_REPO}/releases"
+    val issuesUrl: String get() = "https://github.com/${BuildConfig.UPDATE_REPO}/issues"
 
     /** [quiet]: chequeo automático al abrir la app; ante error no muestra nada. */
     fun check(quiet: Boolean = false, onAvailable: (AppRelease) -> Unit = {}) {

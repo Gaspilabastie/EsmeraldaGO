@@ -123,19 +123,25 @@ class ScreenParser(private val idx: GameIndex) {
 
     // Caracteres que el OCR confunde con dígitos.
     private val digitLike = "0-9OoIl|SsBZ"
-    private val cpRegex = Regex("""\b[cC][pP]\s*[:.]?\s*([$digitLike][$digitLike ,.]{0,6})""")
-    private val cpOnlyRegex = Regex("""^\s*[cC][pP]\s*[:.]?\s*$""")
-    private val hpRegex = Regex("""([$digitLike]{1,4})\s*[/|Il]\s*([$digitLike]{1,4})\s*[hH][pP]""")
-    private val powerUpRegex = Regex("""POWER\s*UP""", RegexOption.IGNORE_CASE)
+    // Cliente en inglés o en español: los dos vocabularios no chocan, así que se reconocen a la vez
+    // (CP/PC, HP/PS, POWER UP/MÁS PODER, "X CANDY"/"CARAMELOS X", "This X was caught"/"Este X fue atrapado").
+    private val cpRegex = Regex("""\b(?:[cC][pP]|[pP][cC])\s*[:.]?\s*([$digitLike][$digitLike ,.]{0,6})""")
+    private val cpOnlyRegex = Regex("""^\s*(?:[cC][pP]|[pP][cC])\s*[:.]?\s*$""")
+    private val hpRegex = Regex("""([$digitLike]{1,4})\s*[/|Il]\s*([$digitLike]{1,4})\s*(?:[hH][pP]|PS|ps)\b""")
+    private val powerUpRegex = Regex("""POWER\s*UP|M[ÁA]S\s*PODER""", RegexOption.IGNORE_CASE)
     private val candyRegex = Regex("""^(?:\d[\d,.]*\s+)?(.+?)\s+CANDY$""", RegexOption.IGNORE_CASE)
+    private val candyEsRegex = Regex("""^(?:\d[\d,.]*\s+)?CARAMELOS?\s+(.+?)$""", RegexOption.IGNORE_CASE)
     private val firstNumberRegex = Regex("""(\d{1,3}(?:[,.]\d{3})+|\d+)""")
-    private val luckyRegex = Regex("""LUCKY\s+POK""", RegexOption.IGNORE_CASE)
-    private val captionRegex = Regex("""^This\s+(.+?)\s+was\b""", RegexOption.IGNORE_CASE)
-    private val statLabels = listOf("WEIGHT", "HEIGHT", "HEAVIEST", "LIGHTEST", "TALLEST", "SHORTEST")
-    private val movesTabsRegex = Regex("""GYMS\s*&?\s*RAIDS|TRAINER\s+BATTLES""", RegexOption.IGNORE_CASE)
-    private val spanishHints = listOf("MEJORAR", "PURIFICAR", "CARAMELO", "POLVOS ESTELARES", "EVOLUCIONAR")
+    private val luckyRegex = Regex("""LUCKY\s+POK|CON\s+SUERTE""", RegexOption.IGNORE_CASE)
+    private val captionRegex = Regex("""^(?:This\s+(.+?)\s+was|Este\s+(.+?)\s+fue)\b""", RegexOption.IGNORE_CASE)
+    private val purifyRegex = Regex("""\bPURIFY\b|\bPURIFICA""")
+    private val statLabels = listOf("WEIGHT", "HEIGHT", "HEAVIEST", "LIGHTEST", "TALLEST", "SHORTEST",
+        "PESO", "ALTURA", "PESADO", "LIGERO", "GRANDE", "PEQUEÑO", "PEQUENO")
+    private val movesTabsRegex = Regex("""GYMS\s*&?\s*RAIDS|TRAINER\s+BATTLES|GIMNASIOS\s+E\s+INCURSIONES|COMBATES\s+DE\s+ENTRENADOR""", RegexOption.IGNORE_CASE)
 
     private val typeNames = Types.ALL.toSet()
+    /** "fantasma" → ghost, "electrico" → electric (sin tildes: el OCR a veces las pierde). */
+    private val spanishTypes: Map<String, String> = Types.SPANISH.entries.associate { (en, es) -> fold(es) to en }
 
     // ================================================================ valoración
 
@@ -150,7 +156,9 @@ class ScreenParser(private val idx: GameIndex) {
         val t = text.trim()
         if (t.endsWith(".")) return null
         val u = t.uppercase()
-        if (u == "HP") return "HP"
+        if (u == "HP" || u == "PS") return "HP"
+        if (levenshtein("ATAQUE", u) <= 1) return "ATTACK"
+        if (levenshtein("DEFENSA", u) <= 1) return "DEFENSE"
         return listOf("ATTACK", "DEFENSE").firstOrNull { levenshtein(it, u) <= 1 }
     }
 
@@ -180,12 +188,10 @@ class ScreenParser(private val idx: GameIndex) {
         // 200 combinaciones. Se devuelve lo leído igual: la parte de abajo de la ficha (los ataques) se
         // combina con la de arriba.
         if (reading.hp == null) {
-            val spanish = lines.any { l -> spanishHints.any { it in l.text.uppercase() } }
             return ScanResult(
                 ScreenType.UNKNOWN,
                 reading = reading,
                 problem = when {
-                    spanish -> "Parece el juego en español: la app lee el cliente en inglés."
                     reading.cp != null -> "Esta pantalla no es la ficha de un Pokémon (no se ven los PS). Abrí uno y volvé a escanear."
                     else -> "No es la ficha de un Pokémon: abrí uno en el juego y volvé a escanear."
                 },
@@ -248,7 +254,7 @@ class ScreenParser(private val idx: GameIndex) {
         val (types, typeLines) = findTypes(sorted, statRow, powerUp, hpLine)
         val rowBottom = (statRow + typeLines).maxOfOrNull { it.bottom } ?: hpLine?.let { it.bottom + 0.12f }
 
-        val shadow = upper.any { Regex("""\bPURIFY\b""").containsMatchIn(it) || it.contains("SHADOW BONUS") }
+        val shadow = upper.any { purifyRegex.containsMatchIn(it) || it.contains("SHADOW BONUS") }
         val lucky = sorted.any { luckyRegex.containsMatchIn(it.text) }
         val maxRow = rowBottom?.let { rb -> sorted.filter { it.top >= rb - 0.005f && (powerUp == null || it.bottom <= powerUp.top) } }.orEmpty()
         // Las etiquetas del usuario ("Dynamax.") están entre los PS y la fila de peso; muy por debajo de la
@@ -256,15 +262,16 @@ class ScreenParser(private val idx: GameIndex) {
         val lastTag = hpLine?.let { hp -> sorted.filter { it.text.trim().endsWith(".") && it.top in hp.bottom..(hp.bottom + 0.15f) }.maxOfOrNull { it.bottom } }
         fun rowLabel(l: OcrLine, label: String) = isRowLabel(l.text, label) ||
             (lastTag != null && l.top > lastTag + 0.08f && isRowLabel(l.text.trim().removeSuffix("."), label))
-        val gigantamax = maxRow.any { rowLabel(it, "GIGANTAMAX") } || upper.any { it.contains("G-MAX") }
-        val dynamax = gigantamax || maxRow.any { rowLabel(it, "DYNAMAX") } ||
+        val gigantamax = maxRow.any { rowLabel(it, "GIGANTAMAX") || rowLabel(it, "GIGAMAX") } || upper.any { it.contains("G-MAX") }
+        val dynamax = gigantamax || maxRow.any { rowLabel(it, "DYNAMAX") || rowLabel(it, "DINAMAX") } ||
             upper.any { it.contains("MAX MOVES") || it.contains("MAX ATTACK") || it.contains("MAX GUARD") }
 
         // Ataques: debajo de POWER UP o de las pestañas GYMS & RAIDS / TRAINER BATTLES. La valoración no los muestra.
         val movesFrom = if (appraisalScreen) null
         else (listOfNotNull(powerUp) + sorted.filter { movesTabsRegex.containsMatchIn(it.text) }).maxOfOrNull { it.bottom }
         val moveTexts = movesFrom?.let { from -> sorted.filter { it.top >= from - 0.005f }.map { it.text.trim() } }.orEmpty()
-        val hasReturn = moveTexts.any { key(stripMoveNoise(it)).let { k -> k.length >= 5 && levenshtein(ocrNorm(k), "retum") <= 1 } }
+        val returnKeys = listOfNotNull("retum", idx.move("RETURN")?.nameEs?.let { ocrNorm(key(it)) })
+        val hasReturn = moveTexts.any { key(stripMoveNoise(it)).let { k -> k.length >= 5 && returnKeys.any { r -> levenshtein(ocrNorm(k), r) <= 1 } } }
 
         return ScreenReading(
             appraisalScreen = appraisalScreen,
@@ -276,7 +283,7 @@ class ScreenParser(private val idx: GameIndex) {
             types = types,
             nameText = findNameLine(sorted, hpLine)?.text?.trim(),
             candyNames = findCandyNames(sorted),
-            captionName = sorted.firstNotNullOfOrNull { captionRegex.find(it.text.trim())?.groupValues?.get(1) },
+            captionName = sorted.firstNotNullOfOrNull { l -> captionRegex.find(l.text.trim())?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } },
             moveTexts = moveTexts,
         )
     }
@@ -340,7 +347,14 @@ class ScreenParser(private val idx: GameIndex) {
 
     private fun tokens(text: String) = text.split('/', ' ', '·').map { it.trim() }.filter { it.isNotEmpty() }
 
-    private fun isStatLabel(token: String) = token.length >= 5 && statLabels.any { levenshtein(it, token.uppercase()) <= 1 }
+    private fun isStatLabel(token: String): Boolean {
+        val u = token.uppercase()
+        // Palabras cortas ("PESO") solo exactas; las largas admiten un error de OCR.
+        return if (u.length < 5) u in statLabels else statLabels.any { levenshtein(it, u) <= 1 }
+    }
+
+    /** "MÁS PESADO": el "MÁS" se ignora en la fila de peso/altura. */
+    private fun isFiller(token: String) = fold(token) == "mas"
 
     /**
      * Tipos de una línea ("Fire / Ghost"), o null si la línea tiene otra cosa. En la fila de peso/altura
@@ -348,12 +362,15 @@ class ScreenParser(private val idx: GameIndex) {
      * aceptan tipos cortados por la valoración ("STEEL / RO" → rock, si el prefijo no es ambiguo).
      */
     private fun typeWords(text: String, inStatRow: Boolean = false): List<String>? {
-        val w = tokens(text.lowercase()).filterNot { inStatRow && (isStatLabel(it) || it.any(Char::isDigit)) }
+        val w = tokens(text.lowercase()).filterNot { inStatRow && (isStatLabel(it) || isFiller(it) || it.any(Char::isDigit)) }
         if (w.isEmpty() || w.size > 2) return null
         return w.map { word ->
+            val f = fold(word)
             if (word in typeNames) word
-            else if (inStatRow && word.length >= 2) typeNames.singleOrNull { it.startsWith(word) } ?: return null
-            else return null
+            else spanishTypes[f] ?: if (inStatRow && word.length >= 2) {
+                // Cortado por la valoración ("STEEL / RO", "FANTASMA / VEN"): prefijo único en inglés o español.
+                (typeNames.filter { it.startsWith(word) } + spanishTypes.filterKeys { it.startsWith(f) }.values).distinct().singleOrNull() ?: return null
+            } else return null
         }
     }
 
@@ -383,6 +400,9 @@ class ScreenParser(private val idx: GameIndex) {
         lines.forEach { l ->
             val t = l.text.trim()
             candyRegex.find(t)?.groupValues?.get(1)?.let { out += it; return@forEach }
+            // Español: "CARAMELOS GASTLY" (los Caramelos XL terminan en "++").
+            candyEsRegex.find(t)?.groupValues?.get(1)?.takeUnless { it.contains("+") || it.uppercase().startsWith("XL") }
+                ?.let { out += it.trim(); return@forEach }
             // (sin exigir mayúsculas: el OCR a veces lee "scORBUNNY")
             if (t.length >= 3 && t.all(Char::isLetter)) {
                 val below = lines.firstOrNull { b ->
@@ -390,6 +410,13 @@ class ScreenParser(private val idx: GameIndex) {
                         abs(b.centerX - l.centerX) < 0.08f && b.text.trim().uppercase().startsWith("CANDY")
                 }
                 if (below != null && below.text.trim().uppercase() == "CANDY") out += t
+            }
+            // Español partido en dos: "CARAMELOS" arriba, "EXEGGCUTE" abajo.
+            if (t.uppercase() == "CARAMELOS") {
+                lines.firstOrNull { b ->
+                    b !== l && b.top >= l.bottom - 0.002f && b.top - l.bottom < l.height * 1.5f &&
+                        abs(b.centerX - l.centerX) < 0.08f && b.text.trim().let { it.length >= 3 && it.all(Char::isLetter) }
+                }?.let { out += it.text.trim() }
             }
         }
         return out.filterNot { it.uppercase().endsWith(" XL") }.distinct()
@@ -621,7 +648,9 @@ class ScreenParser(private val idx: GameIndex) {
         val k = key(stripMoveNoise(text))
         if (k.length < 3) return null
         val moves = pool ?: idx.data.moves
-        val byKey = moves.groupBy { key(it.name.substringBefore(" (")) }
+        // Nombre en inglés y en español ("Puya Nociva" = Poison Jab).
+        val byKey = moves.flatMap { m -> listOfNotNull(m.name.substringBefore(" ("), m.nameEs).map { key(it) to m } }
+            .groupBy({ it.first }, { it.second })
         byKey[k]?.let { return it.first() }
         // Un ícono pegado sin espacio ("OWing Attack"): probar sin la primera letra.
         if (k.length > 4) byKey[k.drop(1)]?.let { return it.first() }
@@ -640,7 +669,12 @@ class ScreenParser(private val idx: GameIndex) {
     private fun ocrNorm(k: String) = k.replace("rn", "m")
 
     companion object {
-        fun key(s: String) = s.lowercase().replace(Regex("[^a-z0-9]"), "")
+        /** Clave de comparación: minúsculas sin tildes ni símbolos ("Cola Dragón" → "coladragon"). */
+        fun key(s: String) = fold(s).replace(Regex("[^a-z0-9]"), "")
+
+        /** Minúsculas y sin tildes. */
+        fun fold(s: String): String = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}"), "")
 
         /** Corrige confusiones típicas de OCR dentro de un número (O→0, l→1, S→5…) y quita espacios. */
         fun fixDigits(s: String): String = s.map {

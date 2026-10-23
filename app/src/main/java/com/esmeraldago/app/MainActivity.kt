@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -48,10 +49,20 @@ class MainActivity : ComponentActivity() {
             handleShare(intent)
             handleRoute(intent)
         }
+        // La pantalla de carga solo al abrir la app (no al volver de otra o si la Activity se recrea).
+        val coldStart = savedInstanceState == null
         setContent {
             EmeraldTheme {
                 ProvideContainer(container) {
-                    EmeraldBackground(Modifier.systemBarsPadding()) {
+                    var splash by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(coldStart) }
+                    val game by container.game.state.collectAsState()
+                    if (splash) {
+                        com.esmeraldago.app.ui.home.SplashScreen(
+                            ready = game !is com.esmeraldago.app.data.GameState.Loading,
+                            status = "Cargando datos del juego…",
+                            onDone = { splash = false },
+                        )
+                    } else EmeraldBackground(Modifier.systemBarsPadding()) {
                         Column(Modifier.fillMaxSize()) { AppNav() }
                         NoticeHost(Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
                     }
