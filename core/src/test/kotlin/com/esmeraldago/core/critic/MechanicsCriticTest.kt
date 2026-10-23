@@ -48,7 +48,8 @@ class MechanicsCriticTest {
         // Tabla oficial: 1→40 = 270.000 polvo / 304 caramelos; 40→50 = 250.000 polvo / 296 XL.
         assertEquals(com.esmeraldago.core.calc.PowerUpCost(270_000, 304, 0), PokeMath.powerUpCost(1.0, 40.0))
         assertEquals(com.esmeraldago.core.calc.PowerUpCost(250_000, 0, 296), PokeMath.powerUpCost(40.0, 50.0))
-        assertEquals(324_000, PokeMath.powerUpCost(1.0, 40.0, shadow = true).stardust)
+        // El juego muestra (y cobra) el costo de oscuro redondeado hacia arriba en float: 961, 3601… (+28 en total).
+        assertEquals(324_028, PokeMath.powerUpCost(1.0, 40.0, shadow = true).stardust)
         assertEquals(135_000, PokeMath.powerUpCost(1.0, 40.0, lucky = true).stardust)
     }
 

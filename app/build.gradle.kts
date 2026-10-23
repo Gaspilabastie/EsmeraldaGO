@@ -22,6 +22,8 @@ android {
         versionName = versionProps.getProperty("versionName")
         // Repositorio de GitHub donde se publican las versiones (para "Buscar actualización").
         buildConfigField("String", "UPDATE_REPO", "\"${providers.gradleProperty("esmeraldago.repo").get()}\"")
+        // Solo para el banco de prueba de escaneo en el teléfono (androidTest); la app no lo usa.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Solo teléfonos ARM de 64 bits (todos los actuales): ML Kit trae ~7-11 MB de librerías nativas por ABI.
         ndk { abiFilters += listOf("arm64-v8a") }
     }
@@ -84,4 +86,8 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // Escaneo con el OCR real (ML Kit) sobre capturas, en el teléfono. Se instala aparte con adb.
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

@@ -139,7 +139,7 @@ fun LivePanel(container: AppContainer, service: LiveScanService) {
                         Spacer(Modifier.width(6.dp))
                         Column(Modifier.weight(1f)) {
                             GbaText(s?.displayName ?: "¿Especie?", size = 16.sp)
-                            GbaText("PC ${p.cp} · Nv ${fmtLevel(p.level)}" + (p.hp?.let { " · PS $it" } ?: ""), size = 13.sp)
+                            GbaText("PC ${draft.result.cp ?: "?"} · Nv ${fmtLevel(p.level)}" + (p.hp?.let { " · PS $it" } ?: ""), size = 13.sp)
                             GbaText(
                                 when {
                                     draft.result.candidates.isEmpty() -> "IV: no cuadran (revisá en la app)"
@@ -166,7 +166,11 @@ fun LivePanel(container: AppContainer, service: LiveScanService) {
                         modifier = Modifier.padding(top = 4.dp)) {
                         PixelButton("GUARDAR", {
                             val ok = container.scan.saveOne(draft.key, container.collection)
-                            saved = if (ok != null) "¡${s?.displayName ?: "Pokémon"} guardado en la CAJA!" else "No se pudo guardar."
+                            saved = when {
+                                ok != null -> "¡${s?.displayName ?: "Pokémon"} guardado en la CAJA!"
+                                draft.result.cp == null -> "Falta el PC: sacá la valoración o escribilo en REVISAR."
+                                else -> "No se pudo guardar."
+                            }
                         }, color = Pal.Blue, enabled = s != null)
                         PixelButton("DESCARTAR", { container.scan.remove(draft.key); saved = null }, color = Pal.Muted)
                     }

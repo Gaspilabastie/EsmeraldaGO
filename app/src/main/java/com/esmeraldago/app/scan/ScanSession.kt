@@ -12,6 +12,7 @@ import com.esmeraldago.core.model.Species
 import com.esmeraldago.core.scan.OcrLine
 import com.esmeraldago.core.scan.ScanResult
 import com.esmeraldago.core.scan.ScreenParser
+import com.esmeraldago.core.scan.ScreenReading
 import com.esmeraldago.core.scan.ScreenType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,8 @@ data class ScanDraft(
     val include: Boolean,
     /** Capturas combinadas (detalle + valoración = 2). */
     val sources: Int = 1,
+    /** Especie elegida a mano (se respeta al recalcular, p. ej. al escribir el PC). */
+    val pickedSpecies: Species? = null,
 )
 
 data class ScanFailure(val index: Int, val reason: String)
@@ -152,26 +155,27 @@ class ScanSession(
         return true
     }
 
-    /** Empareja detalle ↔ valoración del MISMO Pokémon (mismo PC y PS), en cualquier orden. */
+    /**
+     * Empareja detalle ↔ valoración del MISMO Pokémon, en cualquier orden: mismos PS y mismo PC
+     * (o PC ilegible en una de las dos, p. ej. tapado por el modelo) y misma especie si ambas la saben.
+     */
     private fun merge(r: ScanResult, idx: GameIndex, parser: ScreenParser) {
-        val partner = if (r.cp != null && r.hp != null) _drafts.value.lastOrNull { d ->
-            d.sources == 1 && d.result.screen != r.screen &&
-                d.result.cp == r.cp && d.result.hp == r.hp &&
+        val partner = if (r.hp != null) _drafts.value.lastOrNull { d ->
+            d.sources == 1 && d.result.screen != r.screen && d.result.hp == r.hp &&
+                (d.result.cp == r.cp || d.result.cp == null || r.cp == null) &&
                 (r.species == null || d.result.species == null || d.result.species?.dex == r.species?.dex)
         } else null
 
         if (partner == null) {
-            val d = ScanDraft(nextKey++, r, toPokemon(r, idx, null), include = r.species != null && r.ivExact)
+            val d = ScanDraft(nextKey++, r, toPokemon(r, idx, null), include = canSave(r) && r.ivExact)
             _drafts.update { it + d }
             _latestKey.value = d.key
             return
         }
-        val (detail, appraisal) = if (r.screen == ScreenType.APPRAISAL) partner.result to r else r to partner.result
-        val merged = appraisal.appraisal?.let { parser.withAppraisal(detail, it) }?.copy(screen = ScreenType.APPRAISAL)
-            ?: detail.copy(problem = appraisal.problem ?: detail.problem)
+        val merged = parser.combine(partner.result, r).let { if (it.appraisal != null) it.copy(screen = ScreenType.APPRAISAL) else it }
         val d = partner.copy(
             result = merged, pokemon = toPokemon(merged, idx, partner.pokemon),
-            include = merged.species != null && merged.ivExact, sources = 2,
+            include = canSave(merged) && merged.ivExact, sources = 2,
         )
         _drafts.update { list -> list.map { if (it.key == partner.key) d else it } }
         _latestKey.value = d.key
@@ -190,21 +194,21 @@ class ScanSession(
 
     /** El usuario corrigió la especie: recalcular IV con lo leído (fuera del hilo principal). */
     fun changeSpecies(d: ScanDraft, s: Species, idx: GameIndex) = scope.launch(Dispatchers.Default) {
-        val r = d.result.cp?.let { cp ->
-            val levels = d.result.dust?.let {
-                (PokeMath.levelsForDustCost(it, d.result.shadow, false, d.result.lucky, idx.maxLevel) +
-                    PokeMath.levelsForDustCost(it, d.result.shadow, true, d.result.lucky, idx.maxLevel)).distinct()
-            }?.ifEmpty { null }
-            var c = PokeMath.solveIvs(s, cp, idx, d.result.hp, levels, d.result.appraisal)
-            if (c.isEmpty() && levels != null) c = PokeMath.solveIvs(s, cp, idx, d.result.hp, null, d.result.appraisal)
-            d.result.copy(species = s, candidates = c, speciesAmbiguous = false, problem = if (c.isEmpty()) "Ningún IV da ese PC/PS con esta especie." else null)
-        } ?: d.result.copy(species = s, speciesAmbiguous = false)
-        update(d.key) { cur -> cur.copy(result = r, pokemon = toPokemon(r, idx, cur.pokemon), include = r.ivExact) }
+        val r = parserFor(idx).resolveFor(s, d.result)
+        update(d.key) { cur -> cur.copy(result = r, pokemon = toPokemon(r, idx, cur.pokemon), include = canSave(r) && r.ivExact, pickedSpecies = s) }
+    }
+
+    /** El usuario escribió el PC (tapado en la captura): se recalcula todo con las demás pistas leídas. */
+    fun setCp(d: ScanDraft, cp: Int, idx: GameIndex) = scope.launch(Dispatchers.Default) {
+        val reading = (d.result.reading ?: ScreenReading(hp = d.result.hp, dust = d.result.dust, shadow = d.result.shadow, lucky = d.result.lucky))
+            .copy(cp = cp, cpDigits = cp.toString(), cpLabeled = true)
+        val r = parserFor(idx).resolve(reading, d.result.appraisal, forced = d.pickedSpecies)
+        update(d.key) { cur -> cur.copy(result = r, pokemon = toPokemon(r, idx, cur.pokemon), include = canSave(r) && r.ivExact) }
     }
 
     /** Guarda los marcados y limpia la sesión; devuelve cuántos se guardaron. */
     fun save(collection: CollectionRepository): Int {
-        val chosen = _drafts.value.filter { it.include && it.pokemon.speciesId.isNotBlank() }.map { it.pokemon }
+        val chosen = _drafts.value.filter { it.include && it.pokemon.speciesId.isNotBlank() && canSave(it.result) }.map { it.pokemon }
         collection.addAll(chosen)
         clear()
         return chosen.size
@@ -213,7 +217,7 @@ class ScanSession(
     /** Guarda un solo borrador (desde el panel flotante). */
     fun saveOne(key: Int, collection: CollectionRepository): OwnedPokemon? {
         val d = _drafts.value.firstOrNull { it.key == key } ?: return null
-        if (d.pokemon.speciesId.isBlank()) return null
+        if (d.pokemon.speciesId.isBlank() || !canSave(d.result)) return null
         collection.addAll(listOf(d.pokemon))
         remove(key)
         return d.pokemon
@@ -229,6 +233,9 @@ class ScanSession(
     val hasUnsaved get() = _drafts.value.isNotEmpty()
 
     companion object {
+        /** Sin especie o sin PC (ni leído ni deducido) se guardaría un Pokémon inventado. */
+        fun canSave(r: ScanResult) = r.species != null && r.cp != null
+
         fun toPokemon(r: ScanResult, idx: GameIndex, previous: OwnedPokemon?): OwnedPokemon {
             // Con varias combinaciones posibles se toma la más probable "media", no la más optimista.
             val sorted = r.candidates.sortedBy { it.ivs.total }
@@ -248,6 +255,7 @@ class ScanSession(
                 charged1 = r.charged.getOrNull(0) ?: previous?.charged1,
                 charged2 = r.charged.getOrNull(1) ?: previous?.charged2,
                 shadow = r.shadow || previous?.shadow == true,
+                purified = !r.shadow && (r.purified || previous?.purified == true),
                 lucky = r.lucky || previous?.lucky == true,
                 shiny = previous?.shiny == true,
                 dynamax = (r.dynamax && !r.gigantamax) || previous?.dynamax == true,

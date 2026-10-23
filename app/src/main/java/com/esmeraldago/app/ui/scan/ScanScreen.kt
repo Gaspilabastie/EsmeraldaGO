@@ -134,7 +134,8 @@ fun ScanScreen(onBack: () -> Unit) {
                         DraftCard(d, idx,
                             onChange = { transform -> session.update(d.key, transform) },
                             onRemove = { session.remove(d.key) },
-                            onPickSpecies = { pickingFor = d.key })
+                            onPickSpecies = { pickingFor = d.key },
+                            onSetCp = { cp -> session.setCp(d, cp, idx) })
                     }
                     item { Spacer(Modifier.heightIn(min = 90.dp)) }
                 }
@@ -176,11 +177,40 @@ fun ScanScreen(onBack: () -> Unit) {
     )
 }
 
+@Composable
+private fun CpField(current: Int?, onSetCp: (Int) -> Unit) {
+    var text by remember(current) { mutableStateOf(current?.toString() ?: "") }
+    fun apply() { text.toIntOrNull()?.takeIf { it in 10..9999 }?.let(onSetCp) }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+        GbaText("PC:", size = 14.sp)
+        Spacer(Modifier.width(6.dp))
+        Box(
+            Modifier.width(96.dp).heightIn(min = 40.dp)
+                .background(Pal.FrameOuter, SmallPixelShape).padding(2.dp)
+                .background(androidx.compose.ui.graphics.Color.White, SmallPixelShape).padding(horizontal = 8.dp, vertical = 8.dp),
+        ) {
+            if (text.isEmpty()) GbaText("ej. 2445", size = 14.sp, color = Pal.Muted)
+            androidx.compose.foundation.text.BasicTextField(
+                text, { v -> text = v.filter(Char::isDigit).take(4) },
+                textStyle = com.esmeraldago.app.ui.theme.gbaStyle(15.sp), singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { apply() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        PixelButton("LISTO", { apply() }, enabled = text.length >= 2)
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DraftCard(
     d: ScanDraft, idx: GameIndex, onChange: ((ScanDraft) -> ScanDraft) -> Unit, onRemove: () -> Unit,
     onPickSpecies: () -> Unit,
+    onSetCp: (Int) -> Unit = {},
 ) {
     val p = d.pokemon
     val s = d.result.species
@@ -211,6 +241,8 @@ private fun DraftCard(
             }
         }
         d.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Warn) }
+        // PC tapado o reconstruido: se puede escribir y se recalcula todo con lo que ya se leyó.
+        if (d.result.cp == null || d.result.cpInferred) CpField(d.result.cp, onSetCp)
         val c = d.result.candidates
         when {
             s == null || c.isEmpty() -> Unit

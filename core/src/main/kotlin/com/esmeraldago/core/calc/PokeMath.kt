@@ -64,6 +64,18 @@ object PokeMath {
         }
     }
 
+    /**
+     * Polvo que muestra el juego para subir desde [level]: calcula en float y redondea hacia arriba, así que
+     * un oscuro a nivel 8 muestra 961 (800 × 1.2) y a nivel 21 muestra 3,601, pero a nivel 17 muestra 2,640.
+     * Verificado con capturas reales; un cálculo en double daría 960/3,600 y no reconocería esos costos.
+     */
+    fun shownDust(level: Double, shadow: Boolean = false, purified: Boolean = false, lucky: Boolean = false): Int {
+        var c = dustFor(level).toFloat()
+        if (shadow) c *= 1.2f else if (purified) c *= 0.9f
+        if (lucky) c *= 0.5f
+        return kotlin.math.ceil(c.toDouble()).toInt()
+    }
+
     fun powerUpCost(
         from: Double, to: Double,
         shadow: Boolean = false, purified: Boolean = false, lucky: Boolean = false,
@@ -74,29 +86,41 @@ object PokeMath {
             purified -> 0.9
             else -> 1.0
         }
-        var dust = 0.0; var candy = 0.0; var xl = 0.0
+        var dust = 0; var candy = 0.0; var xl = 0.0
         var l = from
         while (l < to - 1e-9) {
-            dust += dustFor(l) * mult * (if (lucky) 0.5 else 1.0)
+            dust += shownDust(l, shadow, purified, lucky)
             val (c, x) = candyFor(l)
             candy += Math.ceil(c * mult)
             xl += Math.ceil(x * mult)
             l += 0.5
         }
-        return PowerUpCost(dust.roundToInt(), candy.toInt(), xl.toInt())
+        return PowerUpCost(dust, candy.toInt(), xl.toInt())
     }
 
     /** Niveles cuyo costo de power-up coincide con el polvo mostrado en pantalla. */
     fun levelsForDustCost(dust: Int, shadow: Boolean, purified: Boolean, lucky: Boolean, maxLevel: Double): List<Double> {
-        val mult = (if (shadow) 1.2 else if (purified) 0.9 else 1.0) * (if (lucky) 0.5 else 1.0)
         val out = mutableListOf<Double>()
         var l = 1.0
         // Con polvo solo se sube hasta 50 (el 51 es por Mejor Compañero).
         while (l < minOf(maxLevel, 50.0)) {
-            if ((dustFor(l) * mult).roundToInt() == dust) out += l
+            if (shownDust(l, shadow, purified, lucky) == dust) out += l
             l += 0.5
         }
         return out
+    }
+
+    /** Todos los costos de polvo que puede mostrar el botón POWER UP (para validar lo leído). */
+    val ALL_SHOWN_DUST: Set<Int> by lazy {
+        buildSet {
+            var l = 1.0
+            while (l < 50.0) {
+                for (sh in listOf(false, true)) for (pu in listOf(false, true)) for (lu in listOf(false, true)) {
+                    if (!(sh && pu)) add(shownDust(l, sh, pu, lu))
+                }
+                l += 0.5
+            }
+        }
     }
 
     // ------------------------------------------------------------- Solver de IV
@@ -108,18 +132,33 @@ object PokeMath {
      * [minIv] sirve para intercambios con suerte (12), purificados (2: purificar suma +2) o atrapados de incursión (10).
      */
     fun solveIvs(
-        s: Species, cp: Int, idx: GameIndex,
+        s: Species, cp: Int?, idx: GameIndex,
         hp: Int? = null,
         levels: List<Double>? = null,
         appraisal: Ivs? = null,
         minIv: Int = 0,
     ): List<IvCandidate> {
+        // Sin PC ni valoración las combinaciones son miles y no dicen nada: se exige al menos uno de los dos.
+        if (cp == null && appraisal == null) return emptyList()
         val lvls = levels ?: generateSequence(1.0) { it + 0.5 }.takeWhile { it <= idx.maxLevel }.toList()
-        val ivs = appraisal?.let { listOf(it) } ?: Ivs.ALL.filter { it.atk >= minIv && it.def >= minIv && it.sta >= minIv }
         val out = mutableListOf<IvCandidate>()
-        for (l in lvls) for (iv in ivs) {
-            if (hp != null && hp(s, l, iv, idx) != hp) continue
-            if (cp(s, l, iv, idx) == cp) out += IvCandidate(l, iv)
+        if (appraisal != null) {
+            for (l in lvls) {
+                if (hp != null && hp(s, l, appraisal, idx) != hp) continue
+                if (cp == null || cp(s, l, appraisal, idx) == cp) out += IvCandidate(l, appraisal)
+            }
+            return out
+        }
+        // Los PS dependen solo del IV de PS: se filtra primero por eso (16 valores) y recién después se
+        // prueban ataque y defensa. Con los PS leídos es ~16 veces más rápido (importa en el modo en vivo).
+        val range = minIv..15
+        for (l in lvls) for (sta in range) {
+            val probe = Ivs(0, 0, sta)
+            if (hp != null && hp(s, l, probe, idx) != hp) continue
+            for (atk in range) for (def in range) {
+                val iv = Ivs(atk, def, sta)
+                if (cp == null || cp(s, l, iv, idx) == cp) out += IvCandidate(l, iv)
+            }
         }
         return out
     }

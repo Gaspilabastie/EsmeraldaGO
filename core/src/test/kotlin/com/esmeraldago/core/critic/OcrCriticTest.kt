@@ -52,8 +52,8 @@ class OcrCriticTest {
     ): List<OcrLine> {
         val cp = PokeMath.cp(s, level, iv, idx)
         val hp = PokeMath.hp(s, level, iv, idx)
-        val mult = (if (shadow) 1.2 else if (purified) 0.9 else 1.0) * (if (lucky) 0.5 else 1.0)
-        val dust = (PokeMath.dustFor(level) * mult).roundToInt()
+        // Como lo muestra el juego (961 para un oscuro a nivel 8, no 960).
+        val dust = PokeMath.shownDust(level, shadow, purified, lucky)
         val out = mutableListOf(
             l(cpText(cp), 0.33f, 0.075f, 0.67f, 0.035f),
             l(name, 0.30f, 0.420f, 0.70f, 0.035f),
