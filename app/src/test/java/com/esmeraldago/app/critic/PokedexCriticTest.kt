@@ -113,14 +113,14 @@ class PokedexCriticTest {
                 }
             }
         }
-        capture("${tag}_1resumen")
+        capture("${tag}_1info")
         rule.onNodeWithText("COMBATE").performClick()
         capture("${tag}_2combate")
-        rule.onNodeWithText("FAMILIA").performClick()
-        capture("${tag}_3familia")
+        rule.onNodeWithText("FORMAS").performClick()
+        capture("${tag}_3formas")
         if (shinyToo) {
-            // El shiny se ve tocando el sprite del encabezado completo (RESUMEN).
-            rule.onNodeWithText("RESUMEN").performClick()
+            // El shiny se ve tocando el sprite del encabezado completo (INFO).
+            rule.onNodeWithText("INFO").performClick()
             rule.onNodeWithContentDescription("Shiny: no").performClick()
             capture("${tag}_4shiny_resumen")
         }

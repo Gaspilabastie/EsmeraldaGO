@@ -1,5 +1,6 @@
 package com.esmeraldago.app.ui.pokedex
 
+import com.esmeraldago.core.GameIndex
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -67,8 +68,9 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                 val q = query.trim().lowercase()
                 idx.released.asSequence()
                     .filter { forms || (!it.shadow && !it.mega) }
-                    // Disfraces y variantes de aspecto van dentro de la entrada principal (FAMILIA); se encuentran buscándolos.
-                    .filter { q.isNotEmpty() || (idx.cosmeticOf[it.id] == null && idx.cosmeticOf[it.baseId] == null) }
+                    // Disfraces, variantes de aspecto y formas de combate van dentro de la entrada principal (FORMAS);
+                    // se encuentran buscándolos.
+                    .filter { q.isNotEmpty() || (idx.cosmeticOf[it.id] == null && idx.cosmeticOf[it.baseId] == null && it.id !in GameIndex.BATTLE_FORMS) }
                     .filter { it.dex in range }
                     .filter { type == null || type in it.types }
                     .filter { !onlyMine || it.baseId in ownedIds }

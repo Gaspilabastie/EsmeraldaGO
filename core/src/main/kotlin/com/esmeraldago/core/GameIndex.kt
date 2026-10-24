@@ -79,7 +79,7 @@ class GameIndex(
      */
     val cosmeticOf: Map<String, String> by lazy {
         fun key(s: Species) = "${s.atk}|${s.def}|${s.sta}|${s.types}"
-        byDex.values.flatMap { forms ->
+        byDex.values.map { forms -> forms.filter { it.id !in BATTLE_FORMS } }.flatMap { forms ->
             val main = forms.minWithOrNull(compareBy<Species>({ !it.released }, { it.id.length }, { it.id })) ?: return@flatMap emptyList()
             forms.filter { it.id != main.id && key(it) == key(main) }.map { it.id to main.id }
         }.toMap()
@@ -141,7 +141,23 @@ class GameIndex(
     fun statProductCacheSize(): Int = synchronized(statProductCache) { statProductCache.size }
     fun clearStatProductCache() = synchronized(statProductCache) { statProductCache.clear() }
 
+    /** Formas que el Pokémon toma solo durante el combate (no se atrapan así): ver [BATTLE_FORMS]. */
+    fun battleFormsOf(s: Species): List<Species> =
+        data.species.filter { it.dex == s.dex && it.id in BATTLE_FORMS && visible(it) }
+
     companion object {
+        /**
+         * Formas que aparecen solo en combate (PvPoke las lista aparte porque cambian stats o tipo a mitad de la
+         * pelea): Aegislash Filo, Morpeko Voraz, Mimikyu destapado, Cramorant tragón, Eiscue sin hielo,
+         * Wishiwashi banco, Palafin heroico, Darmanitan Daruma, Meloetta Danza, Minior Meteoro, Cherrim Soleado,
+         * Necrozma Ultra y Eternatus Dinamax Infinito (solo jefe).
+         */
+        val BATTLE_FORMS = setOf(
+            "aegislash_blade", "morpeko_hangry", "mimikyu_busted", "cramorant_gulping", "cramorant_gorging",
+            "eiscue_noice", "wishiwashi_school", "palafin_hero", "darmanitan_zen", "darmanitan_galarian_zen",
+            "meloetta_pirouette", "minior_meteor", "cherrim_sunny", "necrozma_ultra", "eternatus_eternamax",
+        )
+
         fun nameKey(name: String): String = name.lowercase()
             .replace("♀", " female").replace("♂", " male")
             .replace(Regex("[^a-z0-9 ]"), " ")
