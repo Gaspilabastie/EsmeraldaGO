@@ -157,7 +157,11 @@ private fun AppNav() {
         composable("pokedex") { com.esmeraldago.app.ui.pokedex.PokedexScreen(back, onSpecies = { nav.navigate("species/$it") }) }
         composable("rankings") { RankingsScreen(back, onSpecies = { nav.navigate("species/$it") }) }
         composable("species/{id}", listOf(navArgument("id") { type = NavType.StringType })) {
-            SpeciesDetailScreen(it.arguments!!.getString("id")!!, back, onSpecies = { id -> nav.navigate("species/$id") })
+            // De una entrada a otra se reemplaza: "atrás" vuelve a la pantalla de donde se entró a la Pokédex, no
+            // recorre todas las entradas visitadas.
+            SpeciesDetailScreen(it.arguments!!.getString("id")!!, back, onSpecies = { id ->
+                nav.navigate("species/$id") { popUpTo(it.destination.id) { inclusive = true } }
+            })
         }
         composable("raids") {
             RaidsScreen(back, onBoss = { id, tier -> nav.navigate("counters/$id/$tier") })
