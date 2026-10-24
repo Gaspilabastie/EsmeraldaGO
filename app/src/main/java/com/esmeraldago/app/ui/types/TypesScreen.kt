@@ -73,7 +73,7 @@ fun TypesScreen(onBack: () -> Unit) {
                 }
             }
             GbaText(
-                "En Pokémon GO: súper eficaz ×1.6, poco eficaz ×0.625 y \"inmune\" ×0.39 (no hay inmunidad total). " +
+                "En Pokémon GO: supereficaz ×1.6, poco eficaz ×0.625 y \"inmune\" ×0.39 (no hay inmunidad total). " +
                     "Con dos tipos se multiplican: ×2.56 si ambos son débiles.",
                 size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(10.dp),
             )

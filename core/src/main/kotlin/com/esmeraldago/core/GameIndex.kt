@@ -72,6 +72,23 @@ class GameIndex(
     val byDex: Map<Int, List<Species>> = data.species.filter { !it.shadow && !it.mega && visible(it) }.groupBy { it.dex }
 
     /**
+     * Variantes de aspecto -> su forma principal: mismos stats y tipos que la forma principal de su Nº (disfraces
+     * de Pikachu, capas de Burmy, unidades de Genesect, Tatsugiri…). En la Pokédex van dentro de la entrada
+     * principal, no como entradas aparte. Kyurem Blanco/Negro comparten stats entre ellos pero no con Kyurem:
+     * no cuentan. La principal es la que ya salió y tiene el id más corto ("pikachu", "burmy_plant").
+     */
+    val cosmeticOf: Map<String, String> by lazy {
+        fun key(s: Species) = "${s.atk}|${s.def}|${s.sta}|${s.types}"
+        byDex.values.flatMap { forms ->
+            val main = forms.minWithOrNull(compareBy<Species>({ !it.released }, { it.id.length }, { it.id })) ?: return@flatMap emptyList()
+            forms.filter { it.id != main.id && key(it) == key(main) }.map { it.id to main.id }
+        }.toMap()
+    }
+
+    /** Las variantes de aspecto de [s] (vacío si no tiene o si ella misma es una variante). */
+    fun cosmeticsOf(s: Species): List<Species> = byDex[s.dex].orEmpty().filter { cosmeticOf[it.id] == s.id }
+
+    /**
      * Todas las especies que el juego podría mostrar con este nombre: el juego muestra "Giratina", "Marowak"
      * o "Nidoran" sin la forma, así que se devuelven todas las formas de ese Nº.
      */

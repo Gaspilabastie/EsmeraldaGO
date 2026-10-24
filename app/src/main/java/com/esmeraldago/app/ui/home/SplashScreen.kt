@@ -33,14 +33,11 @@ import kotlin.math.sin
 
 /**
  * Pantalla de carga sobre el fondo del título de Pokémon Esmeralda ([EmeraldTitleBackground], sin el logo).
- * Mientras se baja la primera vez (o sin red) queda un cielo dibujado. Se cierra sola cuando los datos están
- * listos ([ready]) o al tocarla.
+ * No se cierra sola: cuando los datos están listos ([ready]) invita a tocar. Mientras se baja el fondo la primera
+ * vez (o sin red) queda un cielo dibujado.
  */
 @Composable
 fun SplashScreen(ready: Boolean, status: String, onDone: () -> Unit) {
-    var minTimeOver by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(1200); minTimeOver = true }
-    LaunchedEffect(ready, minTimeOver) { if (ready && minTimeOver) onDone() }
     var blink by remember { mutableStateOf(true) }
     val animate = LocalAnimations.current
     LaunchedEffect(animate) { while (animate) { delay(550); blink = !blink } }
@@ -64,7 +61,7 @@ fun SplashScreen(ready: Boolean, status: String, onDone: () -> Unit) {
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = textBottom), horizontalAlignment = Alignment.CenterHorizontally) {
             val shown = blink || !ready
-            GbaText(if (ready) "TOCÁ PARA EMPEZAR" else status, size = 16.sp,
+            GbaText(if (ready) "TOCÁ PARA CONTINUAR" else status, size = 16.sp,
                 color = if (shown) Color(0xFFF8F8F8) else Color.Transparent, shadow = if (shown) Color(0xFF0C3B37) else Color.Transparent)
             Spacer(Modifier.height(10.dp))
             GbaText("compañero de Pokémon GO", size = 12.sp, color = Color(0xFFBFEBDD), shadow = Color(0xFF0C3B37))

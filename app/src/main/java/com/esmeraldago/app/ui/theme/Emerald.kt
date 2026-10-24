@@ -311,19 +311,18 @@ fun readableOn(bg: Color): Pair<Color, Color> =
     if (bg.luminance() > 0.45f) Pal.Text to Color(0x66FFFFFF) else Pal.TextLight to Pal.TextLightShadow
 
 @Composable
-fun TypeBadge(type: String, modifier: Modifier = Modifier, small: Boolean = false, abbreviated: Boolean = false) {
+fun TypeBadge(type: String, modifier: Modifier = Modifier, small: Boolean = false, textSize: TextUnit? = null) {
     val c = Pal.type(type)
     val (fg, sh) = readableOn(c)
-    val label = Types.es(type).uppercase().let { if (abbreviated) it.take(3) else it }
     Box(
         modifier
             .background(Color(0xFF303030), SmallPixelShape)
             .padding(1.dp)
             .background(c, SmallPixelShape)
-            .padding(horizontal = if (small) 4.dp else 6.dp, vertical = 1.dp),
+            .padding(horizontal = if (textSize != null) 2.dp else if (small) 4.dp else 6.dp, vertical = 1.dp),
         contentAlignment = Alignment.Center,
     ) {
-        GbaText(label, size = if (small) 11.sp else 12.sp, color = fg, shadow = sh, maxLines = 1)
+        GbaText(Types.es(type).uppercase(), size = textSize ?: if (small) 11.sp else 12.sp, color = fg, shadow = sh, maxLines = 1)
     }
 }
 
@@ -466,14 +465,18 @@ private fun PixelTab(text: String, sel: Boolean, onClick: () -> Unit, modifier: 
 fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier, types: List<String> = Types.ALL,
                selectedSet: Set<String>? = null) {
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
-        // Tantas columnas como entren con el nombre más largo completo (6 en un teléfono común, menos con letra grande).
+        // Grilla de 6×3 con los nombres completos: la letra se achica lo justo para que entre el más largo
+        // (ELÉCTRICO); solo con letra muy grande del sistema pasa a 3 columnas.
         val measurer = androidx.compose.ui.text.rememberTextMeasurer()
         val density = androidx.compose.ui.platform.LocalDensity.current
         val longest = with(density) {
             types.maxOf { measurer.measure(Types.es(it).uppercase(), gbaStyle(11.sp)).size.width }.toDp()
         }
-        val cell = longest + 22.dp // insignia (borde 1 + relleno 4 por lado) + caja de selección (4 por lado) + separación
-        val cols = (6 downTo 3).firstOrNull { maxWidth / it >= cell } ?: 3
+        // Lo que queda para el texto: separación 2 + caja de selección 3 por lado + insignia (borde 1 + relleno 2 por lado).
+        fun room(cols: Int) = maxWidth / cols - 14.dp
+        val fit = (room(6) / longest).coerceAtMost(1f)
+        val cols = if (fit >= 0.72f) 6 else 3
+        val textSize = 11.sp * if (cols == 6) fit else (room(3) / longest).coerceAtMost(1f)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             types.chunked(cols).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -485,9 +488,9 @@ fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier 
                                 .heightIn(min = 40.dp)
                                 .border(3.dp, if (sel) Pal.Cursor else Color.Transparent, SmallPixelShape)
                                 .selectable(selected = sel, role = Role.RadioButton) { onSelect(t) }
-                                .padding(4.dp),
+                                .padding(horizontal = 3.dp, vertical = 4.dp),
                             contentAlignment = Alignment.Center,
-                        ) { TypeBadge(t, Modifier.fillMaxWidth(), small = true) }
+                        ) { TypeBadge(t, Modifier.fillMaxWidth(), textSize = textSize) }
                     }
                     repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
                 }

@@ -67,6 +67,8 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                 val q = query.trim().lowercase()
                 idx.released.asSequence()
                     .filter { forms || (!it.shadow && !it.mega) }
+                    // Disfraces y variantes de aspecto van dentro de la entrada principal (FAMILIA); se encuentran buscándolos.
+                    .filter { q.isNotEmpty() || (idx.cosmeticOf[it.id] == null && idx.cosmeticOf[it.baseId] == null) }
                     .filter { it.dex in range }
                     .filter { type == null || type in it.types }
                     .filter { !onlyMine || it.baseId in ownedIds }

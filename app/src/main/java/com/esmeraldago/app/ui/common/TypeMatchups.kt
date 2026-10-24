@@ -33,7 +33,7 @@ fun TypeBadges(types: List<String>, modifier: Modifier = Modifier) {
 
 /**
  * Tipos agrupados por multiplicador, de mayor a menor: el multiplicador va una sola vez en el título del grupo.
- * [label] nombra cada grupo según su multiplicador ("Súper eficaz", "Resistente"…).
+ * [label] nombra cada grupo según su multiplicador ("Débil", "Resistente"…).
  */
 @Composable
 private fun ByMultiplier(chart: List<Pair<String, Double>>, label: (Double) -> String) {
@@ -52,7 +52,7 @@ private fun ByMultiplier(chart: List<Pair<String, Double>>, label: (Double) -> S
 @Composable
 fun DefenseMatchups(types: List<String>) {
     ByMultiplier(Types.ALL.map { it to Types.effectiveness(it, types) }) { m ->
-        when { m > 1.0 -> "Súper eficaz"; m < 1.0 -> "Resistente"; else -> "Neutral" }
+        when { m > 1.0 -> "Débil"; m < 1.0 -> "Resistente"; else -> "Neutral" }
     }
 }
 
@@ -60,7 +60,7 @@ fun DefenseMatchups(types: List<String>) {
 @Composable
 fun AttackMatchups(type: String) {
     ByMultiplier(Types.attackChart(type).toList()) { m ->
-        when { m > 1.0 -> "Súper eficaz contra"; m < 1.0 -> "Poco eficaz contra"; else -> "Neutral contra" }
+        when { m > 1.0 -> "Supereficaz contra"; m < 1.0 -> "Poco eficaz contra"; else -> "Neutral contra" }
     }
 }
 

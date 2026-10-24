@@ -78,7 +78,7 @@ private const val SPRITES = "https://raw.githubusercontent.com/PokeAPI/sprites/m
  */
 /** Formas que en Showdown son la forma base (su sprite no lleva sufijo). */
 private val BASE_FORMS = setOf("altered", "incarnate", "land", "ordinary", "aria", "standard", "normal", "hero", "confined",
-    "average", "plant", "shield", "midday", "baile", "male", "overcast", "core", "fullbelly", "amped", "curly", "solo")
+    "average", "plant", "shield", "midday", "baile", "male", "overcast", "core", "fullbelly", "amped", "curly", "solo", "ice")
 
 /**
  * Sprite de la FORMA (Showdown, pixel estilo Negro/Blanco): sin esto Exeggutor de Alola, las megas o Zacian
@@ -93,6 +93,7 @@ private fun formSpriteUrl(s: Species, shiny: Boolean): String? {
         f == "alolan" -> "alola"; f == "galarian" -> "galar"; f == "hisuian" -> "hisui"; f == "paldean" -> "paldea"
         f.startsWith("crowned") -> "crowned"
         f.endsWith(" forme") -> f.removeSuffix(" forme")
+        f == "female" -> "f"
         else -> f
     }.replace(" ", "")
     if (f in BASE_FORMS) return null
@@ -100,7 +101,15 @@ private fun formSpriteUrl(s: Species, shiny: Boolean): String? {
 }
 
 /** Cadena de sprites de una especie: primero el de su forma (si es una forma), después el del número. */
-fun spriteUrls(s: Species, shiny: Boolean = false): List<String> = listOfNotNull(formSpriteUrl(s, shiny)) + spriteUrls(s.dex, shiny)
+fun spriteUrls(s: Species, shiny: Boolean = false, gmax: Boolean = false): List<String> =
+    listOfNotNull(gmaxSpriteUrl(s, shiny).takeIf { gmax }, formSpriteUrl(s, shiny)) + spriteUrls(s.dex, shiny)
+
+/** Sprite Gigamax (Showdown): "charizard-gmax"; Urshifu Fluido es "urshifu-rapidstrikegmax". */
+private fun gmaxSpriteUrl(s: Species, shiny: Boolean): String {
+    val base = s.name.substringBefore(" (").lowercase().replace(Regex("[^a-z0-9]"), "")
+    val slug = if (s.id == "urshifu_rapid_strike") "urshifu-rapidstrikegmax" else "$base-gmax"
+    return "https://play.pokemonshowdown.com/sprites/gen5${if (shiny) "-shiny" else ""}/$slug.png"
+}
 
 fun spriteUrls(dex: Int, shiny: Boolean = false): List<String> = buildList {
     val sh = if (shiny) "shiny/" else ""
@@ -151,10 +160,13 @@ fun Sprite(
     shiny: Boolean = false, purified: Boolean = false, lucky: Boolean = false,
     /** false cuando el destello ya lo muestra otro control (el botón shiny de la Pokédex). */
     shinyIcon: Boolean = true,
+    gmax: Boolean = false,
 ) {
-    val urls = remember(species.id, shiny) { spriteUrls(species, shiny) }
-    var attempt by remember(species.id, shiny) { mutableStateOf(0) }
-    var loaded by remember(species.id, shiny) { mutableStateOf(false) }
+    val urls = remember(species.id, shiny, gmax) { spriteUrls(species, shiny, gmax) }
+    // Atados a las URL, no a la especie: el oscuro usa la misma imagen que el normal y, al cambiar entre ellos,
+    // la imagen no se vuelve a cargar (no hay aviso de "cargó") y el número quedaba visible detrás.
+    var attempt by remember(urls) { mutableStateOf(0) }
+    var loaded by remember(urls) { mutableStateOf(false) }
     val icon = (size * 0.3f).coerceIn(12.dp, 24.dp)
     val context = androidx.compose.ui.platform.LocalContext.current
     Box(Modifier.size(size), contentAlignment = Alignment.Center) {

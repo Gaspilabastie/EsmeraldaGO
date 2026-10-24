@@ -206,7 +206,7 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
             if (m.species.types.toSet() == c.species.types.toSet()) bonus -= 30.0 // mismo tipado
             val mw = weaknessWeights(m.species.types)
             bonus -= cw.entries.sumOf { (t, w) -> (mw[t] ?: 0.0) * w } * 8.0
-            // Bonus si resiste lo que le pega súper eficaz al compañero.
+            // Bonus si resiste lo que le pega supereficaz al compañero.
             bonus += mw.keys.count { Types.effectiveness(it, c.species.types) < 1.0 } * 3.0
             // Cubre a los que le ganan a un compañero (según PvPoke).
             val meta = idx.pvpRank(c.league, m.species.id)?.second

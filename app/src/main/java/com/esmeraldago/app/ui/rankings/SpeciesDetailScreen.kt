@@ -90,7 +90,7 @@ private class EntryData(val pve: List<PveRole>, val max: List<MaxRole>, val pvp:
 
 /**
  * Entrada de Pokédex. Las pestañas quedan fijas arriba; cada página tiene su propio desplazamiento.
- * RESUMEN responde "¿para qué sirve?" (incursiones, combates de entrenador, batallas Max, eficacia de tipos);
+ * RESUMEN responde "¿para qué sirve?" (incursiones, combates de entrenador, batallas Max, resistencias);
  * COMBATE da el detalle (ataques, IV, tablas de movimientos); FAMILIA, de dónde viene (evoluciones con sus
  * formas regionales y megas, versiones y cómo conseguirlo).
  * Normal / oscuro / megas son versiones de la misma entrada: se cambian en el encabezado sin salir de la pantalla.
@@ -204,7 +204,8 @@ private fun Header(s: Species, idx: GameIndex, shiny: Boolean, compact: Boolean,
             }
         }
         val versions = versionsOf(s, idx)
-        if (versions.size > 1) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // El selector de versiones va solo en el encabezado completo (RESUMEN).
+        if (!compact && versions.size > 1) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             versions.forEach { (v, label) -> VersionChip(label, v.id == s.id, Modifier.weight(1f)) { onVersion(v.id) } }
         }
     }
@@ -264,7 +265,8 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?) {
         SectionTitle("Incursiones y gimnasios")
         when {
             data == null -> Reserved("Calculando…", 3)
-            data.pve.none { it.relevant } -> GbaText("No se destaca como atacante en ningún tipo.", size = 13.sp, color = Pal.Muted)
+            data.pve.isEmpty() -> GbaText("No se destaca como atacante en ningún tipo.", size = 13.sp, color = Pal.Muted)
+            data.pve.none { it.relevant } -> GbaText("No se destaca como atacante. Sus mejores puestos:", size = 13.sp, color = Pal.Muted)
             else -> {
                 GbaText(classNote(s), size = 11.sp, color = Pal.Muted)
                 data.pve.filter { it.relevant }.take(4).forEach { r ->
@@ -280,7 +282,8 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?) {
         }
         data?.pve?.filterNot { it.relevant }?.takeIf { it.isNotEmpty() }?.let { weak ->
             FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                GbaText("Otros:", size = 12.sp, color = Pal.Muted)
+                // Con algún tipo destacado arriba, el resto es "en otros tipos"; si no, la frase de arriba ya los presenta.
+                if (data.pve.any { it.relevant }) GbaText("En otros tipos:", size = 12.sp, color = Pal.Muted)
                 weak.forEach {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         TypeBadge(it.type, small = true); GbaText("#${it.rank}", size = 12.sp, color = Pal.Muted)
@@ -335,8 +338,7 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?) {
     }
 
     WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Eficacia")
-        GbaText("Cómo le pegan los ataques de cada tipo:", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(bottom = 4.dp))
+        SectionTitle("Resistencias")
         DefenseMatchups(s.types)
     }
 
@@ -352,16 +354,17 @@ private fun movesText(s: Species, fast: Move, charged: Move) =
     listOf(fast, charged).joinToString(" + ") { it.name + if (s.isElite(it.id)) " (LEGADO)" else "" }
 
 @Composable
-private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit) {
+private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit, gmax: Boolean = false) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(76.dp)
             .background(if (current) Pal.Select else androidx.compose.ui.graphics.Color.Transparent, com.esmeraldago.app.ui.theme.SmallPixelShape)
             .clickable(enabled = !current) { onSpecies(e.id) }.padding(2.dp),
     ) {
-        Sprite(e, 48.dp)
+        Sprite(e, 48.dp, gmax = gmax)
         GbaText(e.displayName.substringBefore(" ("), size = 10.sp, maxLines = 1)
-        subLabel(e)?.let { GbaText(it, size = 9.sp, color = if (e.mega) Pal.Blue else Pal.Muted, maxLines = 1) }
+        val sub = if (gmax) "Gigamax" else subLabel(e)
+        sub?.let { GbaText(it, size = 9.sp, color = if (gmax) Pal.Dynamax else if (e.mega) Pal.Blue else Pal.Muted, maxLines = 1) }
     }
 }
 
@@ -494,31 +497,30 @@ private fun Family(s: Species, idx: GameIndex, reco: Recommender, open: (String)
     val container = LocalContainer.current
     val owned by container.collection.items.collectAsState()
     val raids by container.raids.raids.collectAsState()
-    val base = idx[s.baseId] ?: s
+    // Viendo un disfraz, la familia es la de su forma principal.
+    val base = (idx[s.baseId] ?: s).let { b -> idx.cosmeticOf[b.id]?.let { idx[it] } ?: b }
     val stages = familyStages(base, idx)
 
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Evoluciones y formas")
         if (stages.size == 1 && stages.first().size == 1) GbaText("No evoluciona ni tiene otras formas.", size = 13.sp, color = Pal.Muted)
-        else {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                stages.forEachIndexed { i, stage ->
-                    if (i > 0) GbaText("▼", size = 14.sp, color = Pal.Muted)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        // Viendo el oscuro, se marca su forma normal (el oscuro no es una evolución aparte).
-                        stage.forEach { e -> EvoCell(e, current = e.id == s.id || (s.shadow && e.id == base.id), open) }
+        else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            stages.forEachIndexed { i, stage ->
+                if (i > 0) GbaText("▼", size = 14.sp, color = Pal.Muted)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Viendo el oscuro, se marca su forma normal (el oscuro no es una evolución aparte).
+                    stage.forEach { (e, gmax) ->
+                        EvoCell(e, current = !gmax && (e.id == s.id || (s.shadow && e.id == s.baseId)), open, gmax = gmax)
                     }
                 }
             }
-            GbaText("Tocá uno para verlo. Normal, oscuro y megas también se eligen arriba.", size = 11.sp, color = Pal.Muted,
-                modifier = Modifier.padding(top = 6.dp))
         }
     }
 
     val shadow = idx.shadowOf(base)
     val megas = idx.megasOf(base)
-    WindowBox(Modifier.fillMaxWidth()) {
+    if (shadow != null || megas.isNotEmpty() || base.dynamax || base.gigantamax) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Versiones")
         if (shadow != null) {
             GbaText("Oscuro: ataque ×1.2, defensa ×0.83. Del Team GO Rocket o de incursiones oscuras.", size = 13.sp)
@@ -537,20 +539,18 @@ private fun Family(s: Species, idx: GameIndex, reco: Recommender, open: (String)
                 ": solo los atrapados en batallas Max.",
             size = 13.sp, modifier = Modifier.padding(top = if (shadow != null || megas.isNotEmpty()) 6.dp else 0.dp),
         )
-        val lacks = listOfNotNull("oscuro".takeIf { shadow == null }, "mega".takeIf { megas.isEmpty() },
-            "Dinamax".takeIf { !base.dynamax && !base.gigantamax })
-        if (lacks.isNotEmpty()) GbaText("No tiene: " + lacks.joinToString(" · "), size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 4.dp))
     }
 
-    // Disfraces y formas con los mismos stats y tipos (Pikachu con gorra, tamaños de Pumpkaboo): juntas, en texto.
-    val inTree = stages.flatten().map { it.id }.toSet()
-    val lookalikes = idx.byDex[base.dex].orEmpty().filter { it.id !in inTree && !it.shadow && !it.mega }
-    if (lookalikes.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Otras formas")
-        GbaText("Mismos stats y tipos que la normal: rinden igual.", size = 12.sp, color = Pal.Muted)
-        GbaText(lookalikes.joinToString(", ") { subLabel(it) ?: it.name }, size = 13.sp)
+    // Disfraces y variantes de aspecto (mismos stats y tipos): no son entradas aparte en la lista de la Pokédex.
+    val cosmetics = listOf(base) + idx.cosmeticsOf(base)
+    if (cosmetics.size > 1) WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Disfraces y variantes")
+        GbaText("Mismos stats y tipos: rinden igual, salvo algún ataque exclusivo.", size = 12.sp, color = Pal.Muted)
+        FlowRow(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            cosmetics.forEach { c -> EvoCell(c, current = c.id == s.id || c.id == s.baseId, open) }
+        }
     }
-
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Cómo conseguirlo")
         val mine = owned.count { it.speciesId == s.id || it.speciesId == s.baseId }
@@ -562,20 +562,21 @@ private fun Family(s: Species, idx: GameIndex, reco: Recommender, open: (String)
 }
 
 /**
- * La familia por etapas, con todas sus formas que rinden distinto: las regionales y las de otro tipo (Raichu de
- * Alola, Rotom Lavado) en su etapa, y las megas al lado de su forma normal. Las que solo cambian el aspecto no.
+ * La familia por etapas, con todas sus formas que rinden distinto: primero las normales, regionales y de otro tipo
+ * (Raichu, Raichu de Alola, Rotom Lavado); después las megas y los Gigamax de esa etapa. Los disfraces no
+ * (van en su propia sección). Cada celda es (especie, ¿es su Gigamax?).
  */
-private fun familyStages(base: Species, idx: GameIndex): List<List<Species>> {
+private fun familyStages(base: Species, idx: GameIndex): List<List<Pair<Species, Boolean>>> {
     val seen = HashSet<String>()
     return evolutionStages(base, idx).map { stage ->
-        stage.flatMap { st -> listOf(st) + idx.byDex[st.dex].orEmpty().filter { !it.shadow && !it.mega } }
+        val forms = stage.flatMap { st -> listOf(st) + idx.byDex[st.dex].orEmpty() }
             .distinctBy { it.id }
-            .filter { seen.add("${it.dex}|${it.atk}|${it.def}|${it.sta}|${it.types}") }
-            .flatMap { listOf(it) + idx.megasOf(it).filter { m -> m.baseId == it.id } }
-            .distinctBy { it.id }
+            .filter { idx.cosmeticOf[it.id] == null && seen.add("${it.dex}|${it.atk}|${it.def}|${it.sta}|${it.types}") }
+        forms.map { it to false } +
+            forms.flatMap { f -> idx.megasOf(f).filter { it.baseId == f.id } }.distinctBy { it.id }.map { it to false } +
+            forms.filter { it.gigantamax }.map { it to true }
     }
 }
-
 private fun signed(n: Int) = if (n >= 0) "+$n" else "$n"
 // ---------------------------------------------------------------- piezas
 

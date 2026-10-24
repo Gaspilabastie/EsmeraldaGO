@@ -1,6 +1,6 @@
 package com.esmeraldago.core.model
 
-/** Tabla de tipos de Pokémon GO (súper eficaz 1.6, poco eficaz 0.625, "inmune" 0.390625). */
+/** Tabla de tipos de Pokémon GO (supereficaz 1.6, poco eficaz 0.625, "inmune" 0.390625). */
 object Types {
     val ALL = listOf(
         "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground",
@@ -55,7 +55,7 @@ object Types {
         return m
     }
 
-    /** Tipos que le hacen daño súper eficaz (multiplicador > 1) a esta combinación. */
+    /** Tipos que le hacen daño supereficaz (multiplicador > 1) a esta combinación. */
     fun weaknesses(defenderTypes: List<String>): List<String> =
         ALL.filter { effectiveness(it, defenderTypes) > 1.0 }
 
