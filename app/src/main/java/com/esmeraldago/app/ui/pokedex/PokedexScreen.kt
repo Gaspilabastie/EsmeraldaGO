@@ -70,7 +70,7 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                     .filter { forms || (!it.shadow && !it.mega) }
                     // Disfraces, variantes de aspecto y formas de combate van dentro de la entrada principal (FORMAS);
                     // se encuentran buscándolos.
-                    .filter { q.isNotEmpty() || (idx.cosmeticOf[it.id] == null && idx.cosmeticOf[it.baseId] == null && it.id !in GameIndex.BATTLE_FORMS) }
+                    .filter { q.isNotEmpty() || (idx.cosmeticOf[it.id] == null && idx.cosmeticOf[it.baseId] == null && it.id !in GameIndex.BATTLE_FORMS && it.id !in GameIndex.ALIAS_FORMS) }
                     .filter { it.dex in range }
                     .filter { type == null || type in it.types }
                     .filter { !onlyMine || it.baseId in ownedIds }

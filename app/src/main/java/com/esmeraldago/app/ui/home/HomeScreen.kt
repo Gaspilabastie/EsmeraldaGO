@@ -138,12 +138,16 @@ private fun TodayRaids(game: GameState, onOpen: (String) -> Unit) {
     if (top.isEmpty()) return
     WindowBox(Modifier.fillMaxWidth().clickable { onOpen("raids") }) {
         GbaText("HOY EN INCURSIONES ▶", size = 14.sp, color = Pal.Muted)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            top.forEach { r ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(66.dp)) {
-                    Sprite(r.species!!, 64.dp)
-                    GbaText(shortTier(r.tier), size = 11.sp, color = Pal.Muted, maxLines = 1)
+        // Grilla de 4 columnas iguales: 8 jefes quedan en dos filas de 4.
+        top.chunked(4).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                row.forEach { r ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        Sprite(r.species!!, 64.dp)
+                        GbaText(shortTier(r.tier), size = 11.sp, color = Pal.Muted, maxLines = 1)
+                    }
                 }
+                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }

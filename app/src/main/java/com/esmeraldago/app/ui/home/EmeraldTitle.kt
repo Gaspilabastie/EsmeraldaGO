@@ -47,12 +47,11 @@ class EmeraldTitleArt private constructor(
     private val bandColor = IntArray(SCREEN_H) { y -> palette[ray[y * 256].toInt().coerceAtLeast(1)] }
 
     /**
-     * Dibuja un cuadro de [vw]×[vh] píxeles GBA. Rayquaza (240×160) va abajo y centrado en la cabeza; arriba sigue
-     * el cielo con las nubes. Como en el juego (title_screen.c): las nubes se mezclan 6/16 sobre 15/16, suben 1 px
-     * cada 4 cuadros con una ondulación horizontal, y las marcas de Rayquaza laten entre el color del cuerpo y amarillo.
+     * Dibuja un cuadro de [vw]×[vh] píxeles GBA de la escena (240×160, anclada abajo), desde la columna [cropX].
+     * Como en el juego (title_screen.c): las nubes se mezclan 6/16 sobre 15/16, suben 1 px cada 4 cuadros con una
+     * ondulación horizontal, y las marcas de Rayquaza laten entre el color del cuerpo y amarillo.
      */
-    fun render(out: IntArray, vw: Int, vh: Int, frame: Int) {
-        val cropX = (HEAD_X - vw / 2).let { if (vw >= SCREEN_W) (SCREEN_W - vw) / 2 else it.coerceIn(0, SCREEN_W - vw) }
+    fun render(out: IntArray, vw: Int, vh: Int, frame: Int, cropX: Int) {
         val top = vh - SCREEN_H
         val glow = (cos(2 * PI * frame / 256) * 0.5 + 0.5)
         // RGB de 5 bits del GBA: (31 - i·31, 31 - i·22, 12); con i = 1 se confunde con el cuerpo.
@@ -82,14 +81,24 @@ class EmeraldTitleArt private constructor(
     companion object {
         const val SCREEN_W = 240
         const val SCREEN_H = 160
-        /** Columna de la cabeza de Rayquaza: el recorte en pantallas angostas se centra ahí. */
-        private const val HEAD_X = 124
-        /** Ancho visible aproximado en píxeles GBA: Rayquaza ocupa casi media pantalla y se ven la cabeza y los anillos. */
-        private const val VISIBLE_W = 150f
+        /** Cuadros (a 60 por segundo) de una ida y vuelta del paneo: unos 28 segundos. */
+        private const val PAN_FRAMES = 60 * 28
 
-        /** Escala entera (píxeles reales por píxel GBA) y tamaño visible en píxeles GBA para un lienzo de [wPx]×[hPx]. */
+        /**
+         * Columna (con fracción) donde empieza la vista en el cuadro [frame]: la cámara recorre la escena de lado
+         * a lado, suave (seno), empezando por el centro. Si la pantalla es más ancha que la escena, queda centrada.
+         */
+        fun panX(vw: Int, frame: Int): Double {
+            val center = (SCREEN_W - vw) / 2.0
+            return if (vw >= SCREEN_W) center else center + center * sin(2 * PI * frame / PAN_FRAMES)
+        }
+        /**
+         * Escala entera (píxeles reales por píxel GBA) y tamaño visible en píxeles GBA para un lienzo de [wPx]×[hPx].
+         * La escena ocupa todo el alto, como en la GBA: en un teléfono se ve la parte central (cabeza y anillos)
+         * enorme, y se recortan los costados.
+         */
         fun geometry(wPx: Int, hPx: Int): Triple<Int, Int, Int> {
-            val scale = max(1, (wPx / VISIBLE_W).roundToInt())
+            val scale = max(1, ceil(hPx / SCREEN_H.toFloat()).toInt())
             return Triple(scale, ceil(wPx / scale.toFloat()).toInt(), ceil(hPx / scale.toFloat()).toInt())
         }
         private const val OPAQUE = 0xFF000000.toInt()
@@ -217,8 +226,9 @@ class EmeraldTitleArt private constructor(
 }
 
 /**
- * Fondo animado del título: píxeles GBA enteros (unos 150 de ancho visibles) escalados sin suavizado.
- * Avanza un paso cada 4 cuadros, al ritmo de las nubes del juego.
+ * Fondo animado del título: la escena a todo el alto, en píxeles GBA enteros escalados sin suavizado, con un
+ * paneo lento de lado a lado (Rayquaza enorme, como en la GBA, y se lo ve entero de a poco). Un cuadro del juego
+ * por cuadro de pantalla: nubes y marcas van a su velocidad original.
  */
 @Composable
 fun EmeraldTitleBackground(art: EmeraldTitleArt, modifier: Modifier = Modifier) {
@@ -227,22 +237,27 @@ fun EmeraldTitleBackground(art: EmeraldTitleArt, modifier: Modifier = Modifier) 
     var frame by remember { mutableIntStateOf(128) }
     LaunchedEffect(animate) {
         while (animate) {
-            repeat(4) { withFrameNanos { } }
-            frame += 4
+            withFrameNanos { }
+            frame += 1
         }
     }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val wPx = max(1, constraints.maxWidth)
         val hPx = max(1, constraints.maxHeight)
         val (scale, vw, vh) = EmeraldTitleArt.geometry(wPx, hPx)
-        val bitmap = remember(vw, vh) { Bitmap.createBitmap(vw, vh, Bitmap.Config.ARGB_8888) }
-        val pixels = remember(vw, vh) { IntArray(vw * vh) }
+        // Una columna de más: el paneo avanza de a fracciones de píxel GBA corriendo la imagen, no a saltos.
+        val rw = vw + 1
+        val bitmap = remember(rw, vh) { Bitmap.createBitmap(rw, vh, Bitmap.Config.ARGB_8888) }
+        val pixels = remember(rw, vh) { IntArray(rw * vh) }
         val image = remember(bitmap) { bitmap.asImageBitmap() }
         Canvas(Modifier.fillMaxSize()) {
-            art.render(pixels, vw, vh, frame)
-            bitmap.setPixels(pixels, 0, vw, 0, 0, vw, vh)
+            val pan = EmeraldTitleArt.panX(vw, frame - 128)
+            val cropX = kotlin.math.floor(pan).toInt()
+            art.render(pixels, rw, vh, frame, cropX)
+            bitmap.setPixels(pixels, 0, rw, 0, 0, rw, vh)
             // Anclado abajo: si sobra un poco por el redondeo, se recorta arriba (cielo).
-            drawImage(image, dstOffset = IntOffset(0, hPx - vh * scale), dstSize = IntSize(vw * scale, vh * scale),
+            val dx = -((pan - cropX) * scale).roundToInt()
+            drawImage(image, dstOffset = IntOffset(dx, hPx - vh * scale), dstSize = IntSize(rw * scale, vh * scale),
                 filterQuality = FilterQuality.None)
         }
     }

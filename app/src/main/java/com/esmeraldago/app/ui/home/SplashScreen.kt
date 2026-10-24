@@ -54,12 +54,7 @@ fun SplashScreen(ready: Boolean, status: String, onDone: () -> Unit) {
             Spacer(Modifier.height(2.dp))
             GbaText("VERSIÓN ESMERALDA", size = 15.sp, color = Color(0xFFE8F8F0), shadow = Color(0xFF186848))
         }
-        // Con el fondo del título, el texto va en el cielo, justo arriba de Rayquaza (no sobre su cara).
-        val textBottom = if (art == null) 72.dp else with(LocalDensity.current) {
-            val (scale, _, _) = EmeraldTitleArt.geometry(constraints.maxWidth, constraints.maxHeight)
-            (EmeraldTitleArt.SCREEN_H * scale).toDp() + 8.dp
-        }
-        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = textBottom), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             val shown = blink || !ready
             GbaText(if (ready) "TOCÁ PARA CONTINUAR" else status, size = 16.sp,
                 color = if (shown) Color(0xFFF8F8F8) else Color.Transparent, shadow = if (shown) Color(0xFF0C3B37) else Color.Transparent)

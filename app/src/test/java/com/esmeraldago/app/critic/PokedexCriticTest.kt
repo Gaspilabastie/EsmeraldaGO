@@ -140,6 +140,12 @@ class PokedexCriticTest {
     @Test fun kingambit() = shootAll("kingambit")
     @Test fun pichu() = shootAll("pichu")
     @Test fun pikachu() = shootAll("pikachu")
+    @Test fun meowth() = shootAll("meowth")
+    @Test fun aegislash() = shootAll("aegislash_shield")
+    @Test fun vivillon() = shootAll("vivillon")
+    @Test fun darmanitan() = shootAll("darmanitan_galarian_standard")
+    @Test fun kyurem() = shootAll("kyurem")
+    @Test fun slowpoke() = shootAll("slowpoke")
 
     @Test @Config(qualifiers = "w360dp-h3200dp-xhdpi")
     fun mewtwoSmallFont() = shootAll("mewtwo", "small130_mewtwo", 1.3f)

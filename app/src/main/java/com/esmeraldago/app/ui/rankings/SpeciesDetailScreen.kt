@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import com.esmeraldago.app.ui.common.MoveLabel
 import com.esmeraldago.app.ui.common.ShinyIcon
 import com.esmeraldago.app.ui.common.SpeciesTags
 import com.esmeraldago.app.ui.common.Sprite
+import com.esmeraldago.app.ui.common.SpriteUrl
 import com.esmeraldago.app.ui.common.TierBadge
 import com.esmeraldago.app.ui.common.WithGame
 import com.esmeraldago.app.ui.common.dexLabel
@@ -368,9 +370,10 @@ private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit, g
     }
 }
 
-/** Qué forma es, en corto: "Mega X", "Alola", o lo que diga el paréntesis del nombre ("Wash"). */
+/** Qué forma es, en corto: "Mega X", "Alola", o lo que diga el paréntesis del nombre ("Wash", "Galar Zen"). */
 private fun subLabel(s: Species): String? =
     if (s.mega) megaLabel(s) else regionTag(s) ?: Regex("""\((.+)\)""").find(s.name)?.groupValues?.get(1)
+        ?.replace("Galarian", "Galar")?.replace("Alolan", "Alola")?.replace("Hisuian", "Hisui")?.replace("Paldean", "Paldea")
 
 private fun regionTag(s: Species): String? = when {
     s.id.endsWith("_alolan") -> "Alola"; s.id.endsWith("_galarian") -> "Galar"
@@ -492,9 +495,8 @@ private fun MoveRow(m: Move, s: Species, pve: String, pvp: String) {
 // ---------------------------------------------------------------- FORMAS
 
 /**
- * Evolución, megaevolución, Dinamax/Gigamax, oscuro, formas de combate y variantes de aspecto de la familia
- * (la línea evolutiva: los que comparten caramelo), y cómo conseguirlo. Cada sección dice explícitamente
- * cuando no aplica ("esta familia no tiene megaevoluciones").
+ * La familia (línea evolutiva: los que comparten caramelo) y todas sus formas. Los árboles crecen de izquierda a
+ * derecha y cada etapa es una columna. Cada sección dice explícitamente cuando no aplica.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -502,31 +504,25 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, open: (String) 
     val container = LocalContainer.current
     val owned by container.collection.items.collectAsState()
     val raids by container.raids.raids.collectAsState()
-    // Viendo un disfraz o una forma de combate, la familia es la de su forma principal.
+    // Viendo un disfraz, un duplicado o una forma de combate, la familia es la de su forma principal.
     val base = (idx[s.baseId] ?: s).let { b -> idx.cosmeticOf[b.id]?.let { idx[it] } ?: b }
     val stages = familyStages(base, idx)
     val members = stages.flatten()
     fun isCurrent(e: Species) = e.id == s.id || (s.shadow && e.id == s.baseId)
+    val cell: @Composable (Species) -> Unit = { e -> EvoCell(e, current = isCurrent(e), open) }
 
     WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Evolución")
-        if (members.size == 1) GbaText("No evoluciona.", size = 13.sp, color = Pal.Muted)
-        else Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            stages.forEachIndexed { i, stage ->
-                if (i > 0) GbaText("▼", size = 14.sp, color = Pal.Muted)
-                CenteredCells { stage.forEach { e -> EvoCell(e, current = isCurrent(e), open) } }
-            }
-        }
+        SectionTitle("Evolución y formas")
+        if (members.size == 1) GbaText("No evoluciona ni tiene otras formas.", size = 13.sp, color = Pal.Muted)
+        else Tree(stages.map { stage -> stage.map { e -> @Composable { cell(e) } } })
     }
 
-    // Megas: la última fase (o la que tenga) ▶ sus megas, en su propio renglón.
     val withMegas = members.map { it to idx.megasOf(it).filter { m -> m.baseId == it.id } }.filter { it.second.isNotEmpty() }
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Megaevolución")
         if (withMegas.isEmpty()) GbaText("Esta familia no tiene megaevoluciones.", size = 13.sp, color = Pal.Muted)
         else {
-            withMegas.forEach { (b, megas) -> TransformRow(b, megas.map { it to false }, ::isCurrent, open) }
-            GbaText("En la incursión, una mega suma ×1.1 al daño de todos (×1.3 a los ataques de su tipo).", size = 12.sp, color = Pal.Muted)
+            Tree(listOf(withMegas.map { (b, _) -> @Composable { cell(b) } }, withMegas.flatMap { (_, ms) -> ms.map { m -> @Composable { cell(m) } } }))
             withMegas.forEach { (b, megas) ->
                 megas.forEach { m ->
                     GbaText("${b.displayName.substringBefore(" (")} ${megaLabel(m)}: ATQ ${signed(m.atk - b.atk)} · DEF ${signed(m.def - b.def)} · PS ${signed(m.sta - b.sta)}",
@@ -537,17 +533,20 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, open: (String) 
     }
 
     val dynamax = members.filter { it.dynamax || it.gigantamax }
-    val gmax = members.filter { it.gigantamax }
     WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Dinamax y Gigamax")
+        SectionTitle("Dinamax")
         if (dynamax.isEmpty()) GbaText("Ningún Pokémon de esta familia puede Dinamaxizar.", size = 13.sp, color = Pal.Muted)
         else {
-            GbaText("Pueden Dinamaxizar:", size = 12.sp, color = Pal.Muted)
-            CenteredCells { dynamax.forEach { e -> EvoCell(e, current = isCurrent(e), open) } }
-            if (gmax.isEmpty()) GbaText("Ninguno tiene forma Gigamax.", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 4.dp))
-            else gmax.forEach { b -> TransformRow(b, listOf(b to true), ::isCurrent, open) }
+            CenteredCells { dynamax.forEach { cell(it) } }
             GbaText("Solo los atrapados en batallas Max.", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 4.dp))
         }
+    }
+
+    val gmax = members.filter { it.gigantamax }
+    WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Gigamax")
+        if (gmax.isEmpty()) GbaText("Esta familia no tiene forma Gigamax.", size = 13.sp, color = Pal.Muted)
+        else Tree(listOf(gmax.map { b -> @Composable { cell(b) } }, gmax.map { b -> @Composable { EvoCell(b, current = false, open, gmax = true) } }))
     }
 
     val shadow = idx.shadowOf(idx[s.baseId] ?: base)
@@ -560,23 +559,27 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, open: (String) 
         }
     }
 
-    // Formas que solo aparecen a mitad del combate (Aegislash Filo, Morpeko Voraz…): no se atrapan así.
-    val battle = members.flatMap { idx.battleFormsOf(it) }.distinctBy { it.id }
+    // Formas que solo aparecen a mitad del combate (Aegislash Filo, Morpeko Voraz…): forma normal ▶ forma de combate.
+    val battle = members.map { m -> m to idx.battleFormsOf(m).filter { b -> battleBaseOf(b, members)?.id == m.id } }.filter { it.second.isNotEmpty() }
     if (battle.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Formas en combate")
         GbaText("Cambia de forma durante el combate; no se atrapa así.", size = 12.sp, color = Pal.Muted)
-        CenteredCells { battle.forEach { e -> EvoCell(e, current = e.id == s.id, open) } }
+        Tree(listOf(battle.map { (m, _) -> @Composable { cell(m) } }, battle.flatMap { (_, bs) -> bs.map { b -> @Composable { cell(b) } } }))
     }
 
-    // Disfraces y variantes de aspecto: las que figuran en los datos (con sprite) y las que no (Unown, Vivillon…).
+    // Variantes de aspecto: las que son entradas de los datos (disfraces de Pikachu, capas de Burmy…) y las que no
+    // (letras de Unown, diseños de Vivillon…), con su sprite.
     val cosmetics = members.flatMap { m -> idx.cosmeticsOf(m).let { if (it.isEmpty()) it else listOf(m) + it } }.distinctBy { it.id }
+    val catalog = members.mapNotNull { m -> VARIANT_SPRITES[m.dex]?.let { m to it } }
     val notes = members.mapNotNull { m -> VARIANT_NOTES[m.dex]?.let { m to it } }.distinctBy { it.second }
-    if (cosmetics.isNotEmpty() || notes.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
+    if (cosmetics.isNotEmpty() || catalog.isNotEmpty() || notes.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Variantes de aspecto")
+        GbaText("Mismos stats y tipos: rinden igual, salvo algún ataque exclusivo.", size = 12.sp, color = Pal.Muted)
         notes.forEach { (m, note) -> GbaText(if (members.size > 1) "${m.displayName}: $note" else note, size = 13.sp) }
-        if (cosmetics.isNotEmpty()) {
-            GbaText("Mismos stats y tipos: rinden igual, salvo algún ataque exclusivo.", size = 12.sp, color = Pal.Muted)
-            CenteredCells(Modifier.padding(top = 4.dp)) { cosmetics.forEach { c -> EvoCell(c, current = isCurrent(c), open) } }
+        if (cosmetics.isNotEmpty()) CenteredCells(Modifier.padding(top = 4.dp)) { cosmetics.forEach { cell(it) } }
+        catalog.forEach { (m, variants) ->
+            if (catalog.size > 1 || cosmetics.isNotEmpty()) GbaText(m.displayName, size = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            CenteredCells(Modifier.padding(top = 4.dp)) { variants.forEach { (label, url) -> VariantCell(m, label, url) } }
         }
     }
 
@@ -590,25 +593,92 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, open: (String) 
     }
 }
 
+/** La forma normal de una forma de combate: la de su mismo Nº y región (Darmanitan de Galar Daruma → Darmanitan de Galar). */
+private fun battleBaseOf(battle: Species, members: List<Species>): Species? {
+    val sameDex = members.filter { it.dex == battle.dex }
+    val regional = listOf("_galarian", "_alolan", "_hisuian", "_paldean").firstOrNull { battle.id.contains(it) }
+    return sameDex.firstOrNull { regional != null && it.id.contains(regional) }
+        ?: sameDex.firstOrNull { r -> listOf("_galarian", "_alolan", "_hisuian", "_paldean").none { r.id.contains(it) } }
+}
+
 /**
- * Variantes que solo cambian el aspecto y ni siquiera figuran en los datos (una sola entrada), o que tienen una
- * particularidad que conviene aclarar.
+ * Árbol de izquierda a derecha: una columna por etapa (las formas de la misma etapa, una debajo de la otra),
+ * con ▶ entre columnas. Si no entra a lo ancho, se desliza.
  */
+@Composable
+private fun Tree(columns: List<List<@Composable () -> Unit>>) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+            columns.forEachIndexed { i, col ->
+                if (i > 0) GbaText("▶", size = 14.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 2.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    col.forEach { it() }
+                }
+            }
+        }
+    }
+}
+
+/** Una variante de aspecto que no es una entrada de los datos: sprite y nombre, sin navegación. */
+@Composable
+private fun VariantCell(m: Species, label: String, url: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(60.dp).padding(2.dp)) {
+        SpriteUrl(url, 44.dp, "${m.name} $label")
+        GbaText(label, size = 10.sp, maxLines = 1)
+    }
+}
+
+private const val SHOWDOWN = "https://play.pokemonshowdown.com/sprites/gen5/"
+private const val EMERALD = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iii/emerald/"
+private fun sd(slug: String) = "$SHOWDOWN$slug.png"
+
+/** Variantes de aspecto que no figuran en los datos (una sola entrada), con su sprite. */
+private val VARIANT_SPRITES: Map<Int, List<Pair<String, String>>> = run {
+    val unown = (('A'..'Z').map { it.toString() to "${EMERALD}201-${it.lowercaseChar()}.png" }) +
+        listOf("!" to "${EMERALD}201-exclamation.png", "?" to "${EMERALD}201-question.png")
+    val vivillon = listOf("Pradera" to "vivillon", "Archipiélago" to "vivillon-archipelago", "Continental" to "vivillon-continental",
+        "Elegante" to "vivillon-elegant", "Fantasía" to "vivillon-fancy", "Jardín" to "vivillon-garden", "Altiplano" to "vivillon-highplains",
+        "Taiga" to "vivillon-icysnow", "Jungla" to "vivillon-jungle", "Marino" to "vivillon-marine", "Moderno" to "vivillon-modern",
+        "Monzón" to "vivillon-monsoon", "Océano" to "vivillon-ocean", "Poké Ball" to "vivillon-pokeball", "Polo" to "vivillon-polar",
+        "Fluvial" to "vivillon-river", "Desierto" to "vivillon-sandstorm", "Sabana" to "vivillon-savanna", "Sol" to "vivillon-sun",
+        "Tundra" to "vivillon-tundra").map { (l, s) -> l to sd(s) }
+    fun flowers(name: String) = listOf("Roja" to name, "Amarilla" to "$name-yellow", "Naranja" to "$name-orange",
+        "Azul" to "$name-blue", "Blanca" to "$name-white").map { (l, s) -> l to sd(s) }
+    fun seas(name: String) = listOf("Mar Oeste" to sd(name), "Mar Este" to sd("$name-east"))
+    fun seasons(name: String) = listOf("Primavera" to name, "Verano" to "$name-summer", "Otoño" to "$name-autumn",
+        "Invierno" to "$name-winter").map { (l, s) -> l to sd(s) }
+    mapOf(
+        201 to unown,
+        666 to vivillon,
+        669 to flowers("flabebe"), 670 to flowers("floette"), 671 to flowers("florges"),
+        422 to seas("shellos"), 423 to seas("gastrodon"),
+        585 to seasons("deerling"), 586 to seasons("sawsbuck"),
+        676 to listOf("Salvaje" to "furfrou", "Corazón" to "furfrou-heart", "Estrella" to "furfrou-star", "Diamante" to "furfrou-diamond",
+            "Señorita" to "furfrou-debutante", "Dama" to "furfrou-matron", "Caballero" to "furfrou-dandy", "Reina" to "furfrou-lareine",
+            "Kabuki" to "furfrou-kabuki", "Faraón" to "furfrou-pharaoh").map { (l, s) -> l to sd(s) },
+        774 to listOf("Rojo" to "minior", "Naranja" to "minior-orange", "Amarillo" to "minior-yellow", "Verde" to "minior-green",
+            "Azul" to "minior-blue", "Añil" to "minior-indigo", "Violeta" to "minior-violet").map { (l, s) -> l to sd(s) },
+        550 to listOf("Raya roja" to "basculin", "Raya azul" to "basculin-bluestriped", "Raya blanca" to "basculin-whitestriped").map { (l, s) -> l to sd(s) },
+        854 to listOf("Falsificada" to sd("sinistea"), "Auténtica" to sd("sinistea-antique")),
+        855 to listOf("Falsificada" to sd("polteageist"), "Auténtica" to sd("polteageist-antique")),
+        931 to listOf("Verde" to "squawkabilly", "Azul" to "squawkabilly-blue", "Amarillo" to "squawkabilly-yellow",
+            "Blanco" to "squawkabilly-white").map { (l, s) -> l to sd(s) },
+        982 to listOf("Dos segmentos" to sd("dudunsparce"), "Tres segmentos" to sd("dudunsparce-threesegment")),
+        999 to listOf("Cofre" to sd("gimmighoul"), "Andante" to sd("gimmighoul-roaming")),
+    )
+}
+
+/** Particularidades que conviene aclarar (sin sprites para mostrar o además de ellos). */
 private val VARIANT_NOTES = mapOf(
-    201 to "28 formas (letras A–Z, ! y ?); solo cambian el aspecto.",
     327 to "Cada uno tiene su patrón de manchas; solo cambia el aspecto.",
-    666 to "18 diseños de alas según la región (Postales); solo cambian el aspecto.",
-    669 to "5 colores de flor; solo cambian el aspecto.",
-    670 to "5 colores de flor; solo cambian el aspecto.",
-    671 to "5 colores de flor; solo cambian el aspecto.",
-    422 to "Mar Este y Mar Oeste (regionales); solo cambian el aspecto.",
-    423 to "Mar Este y Mar Oeste (regionales); solo cambian el aspecto.",
-    585 to "4 estaciones, que cambian con la temporada; solo cambian el aspecto.",
-    586 to "4 estaciones, que cambian con la temporada; solo cambian el aspecto.",
-    676 to "Varios cortes de pelo; solo cambian el aspecto.",
-    774 to "7 colores de núcleo; solo cambian el aspecto.",
+    666 to "El diseño depende de la región donde se consiguió (Postales).",
+    422 to "Mar Este y Mar Oeste son regionales.",
+    423 to "Mar Este y Mar Oeste son regionales.",
+    585 to "La estación cambia con la temporada de GO.",
+    586 to "La estación cambia con la temporada de GO.",
     649 to "El disco solo cambia el tipo de Techno Blast.",
     678 to "Macho y hembra aprenden ataques distintos.",
+    999 to "En GO se atrapa en su forma Andante.",
 )
 
 /** Una fila de celdas centrada, que baja de renglón si no entran. */
@@ -619,27 +689,26 @@ private fun CenteredCells(modifier: Modifier = Modifier, content: @Composable ()
         verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
 }
 
-/** Forma normal ▶ sus transformaciones (megas o Gigamax): (especie, ¿es el Gigamax?). */
-@Composable
-private fun TransformRow(base: Species, into: List<Pair<Species, Boolean>>, isCurrent: (Species) -> Boolean, open: (String) -> Unit) {
-    CenteredCells {
-        EvoCell(base, current = isCurrent(base), open)
-        GbaText("▶", size = 14.sp, color = Pal.Muted, modifier = Modifier.padding(top = 18.dp))
-        into.forEach { (e, gmax) -> EvoCell(e, current = !gmax && isCurrent(e), open, gmax = gmax) }
-    }
-}
-
 /**
- * La línea evolutiva por etapas, con las formas que rinden distinto en su etapa (Raichu y Raichu de Alola,
- * Rotom Lavado). Sin megas ni Gigamax (tienen su sección), disfraces ni formas de combate.
+ * La familia por etapas, desde la raíz y siguiendo TODAS las ramas (Meowth de Galar ▶ Perrserker, Slowpoke de
+ * Galar ▶ Slowbro y Slowking de Galar), con las formas de cada etapa que rinden distinto (Raichu de Alola,
+ * Wormadam Arena, Rotom Lavado). Sin megas, Gigamax, disfraces, duplicados ni formas de combate: tienen su sección.
+ * En cada etapa, los hijos van en el orden de sus padres para que las filas coincidan.
  */
 private fun familyStages(base: Species, idx: GameIndex): List<List<Species>> {
+    fun ok(x: Species) = !x.shadow && !x.mega && x.id !in GameIndex.BATTLE_FORMS && x.id !in GameIndex.ALIAS_FORMS &&
+        idx.cosmeticOf[x.id] == null && (idx.includeUnreleased || x.released)
+    var root = base
+    for (guard in 0 until 5) root = root.parent?.let { idx[it] } ?: break
     val seen = HashSet<String>()
-    return evolutionStages(base, idx).map { stage ->
-        stage.flatMap { st -> listOf(st) + idx.byDex[st.dex].orEmpty() }
-            .distinctBy { it.id }
-            .filter { it.id !in GameIndex.BATTLE_FORMS && idx.cosmeticOf[it.id] == null && seen.add("${it.dex}|${it.atk}|${it.def}|${it.sta}|${it.types}") }
-    }.filter { it.isNotEmpty() }
+    val stages = mutableListOf<List<Species>>()
+    var current = (listOf(root) + idx.byDex[root.dex].orEmpty()).filter { ok(it) && seen.add(it.id) }
+    while (current.isNotEmpty() && stages.size < 5) {
+        stages += current
+        val children = current.flatMap { p -> p.evolutions.mapNotNull { idx[it] } + idx.data.species.filter { it.parent == p.id } }
+        current = (children + children.flatMap { idx.byDex[it.dex].orEmpty() }).filter { ok(it) && seen.add(it.id) }
+    }
+    return stages
 }
 private fun signed(n: Int) = if (n >= 0) "+$n" else "$n"
 // ---------------------------------------------------------------- piezas

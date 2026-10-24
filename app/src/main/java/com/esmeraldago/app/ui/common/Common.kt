@@ -88,7 +88,9 @@ private fun formSpriteUrl(s: Species, shiny: Boolean): String? {
     val name = s.name.replace(" (Shadow)", "")
     val form = Regex("""\((.+)\)""").find(name)?.groupValues?.get(1) ?: return null
     val base = name.substringBefore(" (").lowercase().replace(Regex("[^a-z0-9]"), "")
+    // "Galarian Zen" → "galarzen" (Showdown abrevia la región también cuando va con otra forma).
     var f = form.lowercase().replace(Regex("[^a-z0-9 ]"), "").trim()
+        .replace("galarian ", "galar ").replace("alolan ", "alola ").replace("hisuian ", "hisui ").replace("paldean ", "paldea ")
     f = when {
         f == "alolan" -> "alola"; f == "galarian" -> "galar"; f == "hisuian" -> "hisui"; f == "paldean" -> "paldea"
         f.startsWith("crowned") -> "crowned"
@@ -193,6 +195,21 @@ fun Sprite(
         if (shiny && shinyIcon) ShinyIcon(icon, Modifier.align(Alignment.TopStart))
         if (lucky) LuckyIcon(icon, Modifier.align(Alignment.TopEnd))
     }
+}
+
+/** Sprite suelto por URL (variantes de aspecto que no son entradas: letras de Unown, diseños de Vivillon…). */
+@Composable
+fun SpriteUrl(url: String, size: Dp, description: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    AsyncImage(
+        model = remember(url) {
+            coil.request.ImageRequest.Builder(context).data(url).transformations(TrimTransparent).allowHardware(false).build()
+        },
+        contentDescription = description,
+        modifier = Modifier.size(size).padding(size * 0.06f),
+        contentScale = ContentScale.Fit,
+        filterQuality = FilterQuality.None,
+    )
 }
 
 /** Insignia de tier (S, A+, A…), con colores que bajan de "caliente" a "frío". */

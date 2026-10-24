@@ -79,7 +79,7 @@ class GameIndex(
      */
     val cosmeticOf: Map<String, String> by lazy {
         fun key(s: Species) = "${s.atk}|${s.def}|${s.sta}|${s.types}"
-        byDex.values.map { forms -> forms.filter { it.id !in BATTLE_FORMS } }.flatMap { forms ->
+        byDex.values.map { forms -> forms.filter { it.id !in BATTLE_FORMS && it.id !in ALIAS_FORMS } }.flatMap { forms ->
             val main = forms.minWithOrNull(compareBy<Species>({ !it.released }, { it.id.length }, { it.id })) ?: return@flatMap emptyList()
             forms.filter { it.id != main.id && key(it) == key(main) }.map { it.id to main.id }
         }.toMap()
@@ -141,9 +141,12 @@ class GameIndex(
     fun statProductCacheSize(): Int = synchronized(statProductCache) { statProductCache.size }
     fun clearStatProductCache() = synchronized(statProductCache) { statProductCache.clear() }
 
-    /** Formas que el Pokémon toma solo durante el combate (no se atrapan así): ver [BATTLE_FORMS]. */
+    /**
+     * Formas que el Pokémon toma solo durante el combate (no se atrapan así): ver [BATTLE_FORMS]. PvPoke las marca
+     * "no lanzadas" (no se pueden elegir), pero si el Pokémon salió, la forma aparece en sus combates: se muestran.
+     */
     fun battleFormsOf(s: Species): List<Species> =
-        data.species.filter { it.dex == s.dex && it.id in BATTLE_FORMS && visible(it) }
+        if (!visible(s)) emptyList() else data.species.filter { it.dex == s.dex && it.id in BATTLE_FORMS }
 
     companion object {
         /**
@@ -157,6 +160,12 @@ class GameIndex(
             "eiscue_noice", "wishiwashi_school", "palafin_hero", "darmanitan_zen", "darmanitan_galarian_zen",
             "meloetta_pirouette", "minior_meteor", "cherrim_sunny", "necrozma_ultra", "eternatus_eternamax",
         )
+
+        /**
+         * Entradas duplicadas en PvPoke: la misma forma con otro nombre ("Hoopa" y "Hoopa (Confined)", "Toxtricity"
+         * y "Toxtricity (Amped)"). Se ocultan en la Pokédex; los rankings no cambian.
+         */
+        val ALIAS_FORMS = setOf("hoopa_confined", "eiscue_ice", "wishiwashi_solo", "palafin_zero", "toxtricity_amped", "maushold_family_of_four")
 
         fun nameKey(name: String): String = name.lowercase()
             .replace("♀", " female").replace("♂", " male")
