@@ -175,13 +175,13 @@ private fun PvpTab(
                 }
                 GbaText(
                     "Ranking PvPoke (general) · ${league.label} (≤${league.cap} PC)" +
-                        (if (!allowElite) "\nSin los que dependen de un ataque de legado (MT Élite)." else "") + "\n${com.esmeraldago.core.calc.Tier.PVP_LEGEND}",
+                        (if (!allowElite) "\nSin los que dependen de un ataque de legado (MT Élite)." else "") + "\n$TIER_LEGEND",
                     size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp),
                 )
             }
         }
         itemsIndexed(rows, key = { _, r -> r.second.id }) { _, (rank, r, s) ->
-            RankRow(rank, s, onClick = { onSpecies(s.id) }, trailing = { RankValue(r.score, topScore, fmt1(r.score), tier = com.esmeraldago.core.calc.Tier.pvpOf(rank)) }) {
+            RankRow(rank, s, onClick = { onSpecies(s.id) }, trailing = { RankValue(r.score, topScore, fmt1(r.score)) }) {
                 Column {
                     r.moveset.mapNotNull { idx.move(it) }.forEach { MoveLabel(it, s) }
                     r.nonEliteMoveset(s)?.takeIf { it.isNotEmpty() }?.let { alt ->

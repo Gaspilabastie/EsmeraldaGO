@@ -149,6 +149,8 @@ fun Sprite(p: com.esmeraldago.core.model.OwnedPokemon, species: Species, size: D
 fun Sprite(
     species: Species, size: Dp = 56.dp, shadow: Boolean = species.shadow,
     shiny: Boolean = false, purified: Boolean = false, lucky: Boolean = false,
+    /** false cuando el destello ya lo muestra otro control (el botón shiny de la Pokédex). */
+    shinyIcon: Boolean = true,
 ) {
     val urls = remember(species.id, shiny) { spriteUrls(species, shiny) }
     var attempt by remember(species.id, shiny) { mutableStateOf(0) }
@@ -176,7 +178,7 @@ fun Sprite(
         )
         if (shadow) ShadowIcon(icon, Modifier.align(Alignment.BottomStart))
         if (purified) PurifiedIcon(icon, Modifier.align(Alignment.BottomStart))
-        if (shiny) ShinyIcon(icon, Modifier.align(Alignment.TopStart))
+        if (shiny && shinyIcon) ShinyIcon(icon, Modifier.align(Alignment.TopStart))
         if (lucky) LuckyIcon(icon, Modifier.align(Alignment.TopEnd))
     }
 }

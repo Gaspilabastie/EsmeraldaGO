@@ -209,6 +209,19 @@ class MechanicsCriticTest {
         assertTrue(r.gigantamax, "Regresión: G-Max Urshifu (Rapid Strike) perdido por BREAD_DOUGH_MODE_2")
     }
 
+    @Test
+    fun mec7c_gmaxOnlyWhenReleasedPerPokemon() {
+        // allowedSourdoughPokemon ya lista Gigamax que no salieron (Corviknight, Eevee, Melmetal...): la señal de
+        // lanzamiento es BREAD_DOUGH_MODE en los breadOverrides del propio Pokémon (Machamp lo tiene, Corviknight no).
+        listOf("corviknight", "eevee", "melmetal", "copperajah").forEach {
+            assertTrue(idx[it]?.gigantamax != true, "$it marcado Gigamax sin haber salido")
+        }
+        assertTrue(idx["corviknight"]?.dynamax == true, "Corviknight debería seguir siendo Dinamax")
+        listOf("machamp", "charizard", "snorlax", "gengar", "toxtricity_amped").forEach {
+            assertTrue(idx[it]?.gigantamax == true, "$it debería ser Gigamax")
+        }
+    }
+
     // ------------------------------------------------------------ MEC-5: levelsForDustCost incluye niveles no subibles
 
     @Test

@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
-/** Pantalla de carga (en los tests no hay red: se ve sin el sprite de Rayquaza). */
+/** Pantalla de carga (sin red se ve el cielo de reemplazo, sin el fondo del título). */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
@@ -31,7 +31,7 @@ class SplashScreenshotTest {
                 EmeraldTheme { SplashScreen(ready = false, status = "Cargando datos del juego…", onDone = {}) }
             }
         }
-        // El arte de Rayquaza se baja de la red: darle unos segundos (si no hay red, sale sin la silueta).
+        // El fondo del título se baja de la red la primera vez: darle unos segundos.
         repeat(25) { Thread.sleep(300); rule.waitForIdle() }
         var bmp: Bitmap? = null
         rule.runOnUiThread {

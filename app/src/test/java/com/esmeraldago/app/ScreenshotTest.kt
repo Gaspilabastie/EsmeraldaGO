@@ -9,6 +9,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import com.esmeraldago.app.ui.theme.LocalAnimations
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.esmeraldago.app.data.GameState
 import com.esmeraldago.app.ui.collection.OwnedDetailScreen
@@ -42,7 +45,7 @@ class ScreenshotTest {
         while (app.container.game.state.value !is GameState.Ready && System.currentTimeMillis() < deadline) Thread.sleep(100)
     }
 
-    private fun shoot(name: String, content: @Composable () -> Unit) {
+    private fun shoot(name: String, act: () -> Unit = {}, content: @Composable () -> Unit) {
         waitForData()
         rule.setContent {
             // Sin animaciones infinitas (cursor parpadeante) para que la UI llegue a "idle".
@@ -58,6 +61,7 @@ class ScreenshotTest {
             Thread.sleep(400) // cálculos en Dispatchers.Default
             rule.waitForIdle()
         }
+        act(); rule.waitForIdle()
         var bmp: Bitmap? = null
         rule.runOnUiThread {
             val view = rule.activity.window.decorView.rootView
@@ -109,6 +113,22 @@ class ScreenshotTest {
         seed()
         shoot("06_advice") { com.esmeraldago.app.ui.advice.AdviceScreen(onBack = {}, onOwned = {}, onSpecies = {}) }
     }
+
+    @Test
+    fun types() = shoot("08_types") { com.esmeraldago.app.ui.types.TypesScreen(onBack = {}) }
+
+    @Test
+    fun typesDefense() = shoot("09_types_defense", act = {
+        rule.onNodeWithText("DEFENDER", useUnmergedTree = true).performClick(); rule.waitForIdle()
+        rule.onAllNodesWithText("VOLADOR")[0].performClick()
+    }) { com.esmeraldago.app.ui.types.TypesScreen(onBack = {}) }
+
+    @Test
+    @Config(qualifiers = "w360dp-h740dp-xhdpi")
+    fun typesNarrow() = shoot("10_types_360dp") { com.esmeraldago.app.ui.types.TypesScreen(onBack = {}) }
+
+    @Test
+    fun pokedex() = shoot("11_pokedex") { com.esmeraldago.app.ui.pokedex.PokedexScreen(onBack = {}, onSpecies = {}) }
 
     @Test
     fun speciesDetail() = shoot("07_species") {

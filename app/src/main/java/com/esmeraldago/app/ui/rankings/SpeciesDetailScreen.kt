@@ -1,6 +1,8 @@
 package com.esmeraldago.app.ui.rankings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -25,12 +28,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esmeraldago.app.ui.common.DefenseMatchups
 import com.esmeraldago.app.ui.common.LocalContainer
 import com.esmeraldago.app.ui.common.MoveLabel
+import com.esmeraldago.app.ui.common.ShinyIcon
 import com.esmeraldago.app.ui.common.SpeciesTags
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.TierBadge
@@ -63,7 +71,7 @@ import com.esmeraldago.core.model.Species
 import com.esmeraldago.core.model.Types
 import com.esmeraldago.core.reco.Recommender
 
-private enum class Page(val label: String) { SUMMARY("RESUMEN"), BATTLE("COMBATE"), FORMS("FORMAS") }
+private enum class Page(val label: String) { SUMMARY("RESUMEN"), BATTLE("COMBATE"), FAMILY("FAMILIA") }
 
 /** Cómo rinde como atacante de un tipo: puesto en su clase, tier y % contra el mejor de TODOS, y su mejor par de ataques. */
 private class PveRole(
@@ -82,24 +90,29 @@ private class EntryData(val pve: List<PveRole>, val max: List<MaxRole>, val pvp:
 
 /**
  * Entrada de Pokédex. Las pestañas quedan fijas arriba; cada página tiene su propio desplazamiento.
- * RESUMEN responde "¿para qué sirve?" (incursiones, combates de entrenador, Dinamax, defensa, datos,
- * evoluciones); COMBATE da el detalle (ataques, IV, tablas de movimientos); FORMAS, sus otras versiones.
- * Los cálculos pesados se hacen una vez por especie, no cada vez que se cambia de pestaña.
+ * RESUMEN responde "¿para qué sirve?" (incursiones, combates de entrenador, batallas Max, eficacia de tipos);
+ * COMBATE da el detalle (ataques, IV, tablas de movimientos); FAMILIA, de dónde viene (evoluciones con sus
+ * formas regionales y megas, versiones y cómo conseguirlo).
+ * Normal / oscuro / megas son versiones de la misma entrada: se cambian en el encabezado sin salir de la pantalla.
+ * Los cálculos pesados se hacen una vez por versión, no cada vez que se cambia de pestaña.
  */
 @Composable
 fun SpeciesDetailScreen(id: String, onBack: () -> Unit, onSpecies: (String) -> Unit = {}) {
     var page by rememberSaveable(id) { mutableStateOf(Page.SUMMARY) }
+    var shownId by rememberSaveable(id) { mutableStateOf(id) }
     var shiny by rememberSaveable(id) { mutableStateOf(false) }
     val settings by LocalContainer.current.settings.state.collectAsState()
     val scrolls = Page.entries.associateWith { rememberScrollState() }
     Column(Modifier.fillMaxSize()) {
         WithGame { idx, reco ->
-            val s = idx[id]
+            val s = idx[shownId]
             if (s == null) {
                 TitleBar("Pokémon", onBack)
-                GbaText("Especie desconocida: $id", modifier = Modifier.padding(12.dp))
+                GbaText("Especie desconocida: $shownId", modifier = Modifier.padding(12.dp))
                 return@WithGame
             }
+            // Otra versión de este mismo Pokémon (oscuro, mega): se cambia acá; otra especie abre su entrada.
+            val open: (String) -> Unit = { other -> if (idx[other]?.baseId == s.baseId) shownId = other else onSpecies(other) }
             TitleBar("${dexLabel(s.dex)} ${s.displayName}", onBack)
             PixelTabs(Page.entries, page, { it.label }, { page = it }, Modifier.padding(vertical = 6.dp), fill = true)
             val (data, _) = rememberComputed(s.id, settings.rankLevel, settings.maxMoveLevel, settings.pvpMaxLevel) {
@@ -109,11 +122,11 @@ fun SpeciesDetailScreen(id: String, onBack: () -> Unit, onSpecies: (String) -> U
                 Modifier.verticalScroll(scrolls.getValue(page)).padding(horizontal = 10.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Header(s, idx, shiny, compact = page != Page.SUMMARY) { shiny = !shiny }
+                Header(s, idx, shiny, compact = page != Page.SUMMARY, toggleShiny = { shiny = !shiny }, onVersion = { shownId = it })
                 when (page) {
-                    Page.SUMMARY -> Summary(s, idx, reco, data, onSpecies)
+                    Page.SUMMARY -> Summary(s, idx, data)
                     Page.BATTLE -> Battle(s, idx, data)
-                    Page.FORMS -> Forms(s, idx, onSpecies)
+                    Page.FAMILY -> Family(s, idx, reco, open)
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -160,12 +173,13 @@ private fun compute(s: Species, idx: GameIndex, level: Double, maxLevel: Int, pv
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Header(s: Species, idx: GameIndex, shiny: Boolean, compact: Boolean, toggleShiny: () -> Unit) {
+private fun Header(s: Species, idx: GameIndex, shiny: Boolean, compact: Boolean, toggleShiny: () -> Unit, onVersion: (String) -> Unit) {
     WindowBox(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Sprite(s, if (compact) 64.dp else 104.dp, shiny = shiny)
-                if (!compact) ToggleChip("★ Shiny", shiny, { toggleShiny() })
+            // Tocar el sprite (o el destello de la esquina) muestra el shiny.
+            Box(Modifier.clickable(onClickLabel = "Ver shiny") { toggleShiny() }) {
+                Sprite(s, if (compact) 64.dp else 104.dp, shiny = shiny, shinyIcon = false)
+                ShinyToggle(shiny, Modifier.align(Alignment.BottomEnd), small = compact)
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -189,6 +203,55 @@ private fun Header(s: Species, idx: GameIndex, shiny: Boolean, compact: Boolean,
                 }
             }
         }
+        val versions = versionsOf(s, idx)
+        if (versions.size > 1) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            versions.forEach { (v, label) -> VersionChip(label, v.id == s.id, Modifier.weight(1f)) { onVersion(v.id) } }
+        }
+    }
+}
+
+/** Normal, oscuro y megas del mismo Pokémon, con su etiqueta corta. */
+private fun versionsOf(s: Species, idx: GameIndex): List<Pair<Species, String>> {
+    val base = idx[s.baseId] ?: s
+    return listOf(base to "Normal") + listOfNotNull(idx.shadowOf(base)?.let { it to "Oscuro" }) +
+        idx.megasOf(base).map { it to megaLabel(it) }
+}
+
+/** "Charizard (Mega X)" → "Mega X"; "Kyogre (Primal)" → "Primigenio". */
+private fun megaLabel(m: Species): String {
+    val inner = Regex("""\((.+)\)""").find(m.name)?.groupValues?.get(1).orEmpty()
+    return when {
+        inner.contains("Primal", ignoreCase = true) -> "Primigenio"
+        inner.startsWith("Mega", ignoreCase = true) -> inner
+        else -> "Mega"
+    }
+}
+
+@Composable
+private fun VersionChip(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .heightIn(min = 36.dp)
+            .background(if (selected) Pal.Select else Pal.Window, com.esmeraldago.app.ui.theme.SmallPixelShape)
+            .border(2.dp, if (selected) Pal.Cursor else Pal.FrameInner, com.esmeraldago.app.ui.theme.SmallPixelShape)
+            .selectable(selected = selected, role = Role.Tab) { onClick() }
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) { GbaText(label, size = 13.sp, maxLines = 1) }
+}
+
+/** Botón del destello en la esquina del sprite: claro y con borde marcado cuando el shiny está a la vista. */
+@Composable
+private fun ShinyToggle(on: Boolean, modifier: Modifier, small: Boolean) {
+    Box(
+        modifier
+            .size(if (small) 24.dp else 32.dp)
+            .background(if (on) Pal.Select else Pal.Window, com.esmeraldago.app.ui.theme.SmallPixelShape)
+            .border(2.dp, if (on) Pal.Cursor else Pal.FrameInner, com.esmeraldago.app.ui.theme.SmallPixelShape)
+            .semantics { contentDescription = if (on) "Shiny: sí" else "Shiny: no" },
+        contentAlignment = Alignment.Center,
+    ) {
+        ShinyIcon(if (small) 16.dp else 22.dp, Modifier.alpha(if (on) 1f else 0.45f))
     }
 }
 
@@ -196,11 +259,7 @@ private fun Header(s: Species, idx: GameIndex, shiny: Boolean, compact: Boolean,
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Summary(s: Species, idx: GameIndex, reco: Recommender, data: EntryData?, onSpecies: (String) -> Unit) {
-    val container = LocalContainer.current
-    val owned by container.collection.items.collectAsState()
-    val raids by container.raids.raids.collectAsState()
-
+private fun Summary(s: Species, idx: GameIndex, data: EntryData?) {
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Incursiones y gimnasios")
         when {
@@ -220,8 +279,14 @@ private fun Summary(s: Species, idx: GameIndex, reco: Recommender, data: EntryDa
             }
         }
         data?.pve?.filterNot { it.relevant }?.takeIf { it.isNotEmpty() }?.let { weak ->
-            GbaText("Otros: " + weak.joinToString(", ") { "${Types.es(it.type)} #${it.rank}" }, size = 12.sp, color = Pal.Muted,
-                modifier = Modifier.padding(top = 4.dp))
+            FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                GbaText("Otros:", size = 12.sp, color = Pal.Muted)
+                weak.forEach {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        TypeBadge(it.type, small = true); GbaText("#${it.rank}", size = 12.sp, color = Pal.Muted)
+                    }
+                }
+            }
         }
     }
 
@@ -234,7 +299,7 @@ private fun Summary(s: Species, idx: GameIndex, reco: Recommender, data: EntryDa
             ranked.forEach { (lg, r) ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(top = 4.dp)) {
-                    TierBadge(Tier.pvpOf(r.first))
+                    TierBadge(Tier.of(r.second.score, idx.pvpRanking(lg).firstOrNull()?.score ?: 0.0))
                     GbaText("${lg.label.removePrefix("Liga ")} #${r.first} · ${fmt1(r.second.score)}", size = 13.sp, maxLines = 1)
                 }
                 GbaText(r.second.moveset.mapNotNull { idx.move(it)?.name }.joinToString(" · "), size = 12.sp, color = Pal.Muted)
@@ -247,50 +312,34 @@ private fun Summary(s: Species, idx: GameIndex, reco: Recommender, data: EntryDa
 
     val base = idx[s.baseId] ?: s
     if (base.dynamax || base.gigantamax) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Dinamax")
+        SectionTitle("Batallas Max")
         when {
             s.shadow -> GbaText("Los oscuros no pueden Dinamaxizar: hace falta uno atrapado en una batalla Max.", size = 13.sp, color = Pal.Muted)
             s.mega -> GbaText("Las megas no se usan en batallas Max.", size = 13.sp, color = Pal.Muted)
             data == null -> Reserved("Calculando…", 2)
-            else -> data.max.forEach { m ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = 4.dp)) {
-                    m.tier?.let { TierBadge(it) }
-                    GbaText("${m.moveName} · " + (m.rank?.let { "#$it ${Types.es(m.type)}" } ?: Types.es(m.type)), size = 13.sp, maxLines = 1)
+            else -> {
+                GbaText((if (s.gigantamax && s.dynamax) "Puede ser Dinamax y Gigamax." else if (s.gigantamax) "Puede ser Gigamax." else "Puede ser Dinamax.") +
+                    " Para cada ataque Max: puesto entre los atacantes Max de ese tipo y tier contra el mejor.",
+                    size = 11.sp, color = Pal.Muted)
+                data.max.forEach { m ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 4.dp)) {
+                        m.tier?.let { TierBadge(it) }
+                        TypeBadge(m.type, small = true)
+                        GbaText(m.moveName + (m.rank?.let { " · #$it" } ?: ""), size = 13.sp, maxLines = 1)
+                    }
+                    GbaText("${m.damage.toInt()} de daño · carga la barra con ${m.bestFast.name}", size = 12.sp, color = Pal.Muted)
                 }
-                GbaText("${m.damage.toInt()} de daño · rápido para la barra: ${m.bestFast.name}", size = 12.sp, color = Pal.Muted)
             }
         }
     }
 
     WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Defensa")
+        SectionTitle("Eficacia")
+        GbaText("Cómo le pegan los ataques de cada tipo:", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(bottom = 4.dp))
         DefenseMatchups(s.types)
     }
 
-    WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Datos")
-        val mine = owned.count { it.speciesId == s.id || it.speciesId == s.baseId }
-        val inRaids = raids.orEmpty().mapNotNull { it.species?.id }.toSet() + raids.orEmpty().mapNotNull { it.species?.baseId }
-        GbaText("Dónde: " + reco.whereToGet(s, inRaids), size = 13.sp)
-        GbaText("Compañero: ${s.buddyKm} km por caramelo", size = 13.sp)
-        GbaText(if (mine > 0) "Tenés $mine en tu caja" else "No tenés ninguno", size = 13.sp, color = if (mine > 0) Pal.Text else Pal.Muted)
-    }
-
-    val stages = evolutionStages(s, idx)
-    if (stages.size > 1) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Evoluciones")
-        FlowRow(verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            stages.forEachIndexed { i, stage ->
-                if (i > 0) GbaText("▶", size = 14.sp, color = Pal.Muted, modifier = Modifier.align(Alignment.CenterVertically))
-                // Muchas ramas (Eevee): en grilla de 4.
-                FlowRow(Modifier.width(if (stage.size > 2) 248.dp else (62 * stage.size).dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    stage.forEach { e -> EvoCell(e, current = e.id == s.id || e.id == s.baseId, onSpecies) }
-                }
-            }
-        }
-    }
 }
 
 private fun classNote(s: Species) = when {
@@ -306,15 +355,19 @@ private fun movesText(s: Species, fast: Move, charged: Move) =
 private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(60.dp)
+        modifier = Modifier.width(76.dp)
             .background(if (current) Pal.Select else androidx.compose.ui.graphics.Color.Transparent, com.esmeraldago.app.ui.theme.SmallPixelShape)
             .clickable(enabled = !current) { onSpecies(e.id) }.padding(2.dp),
     ) {
         Sprite(e, 48.dp)
         GbaText(e.displayName.substringBefore(" ("), size = 10.sp, maxLines = 1)
-        regionTag(e)?.let { GbaText(it, size = 9.sp, color = Pal.Muted) }
+        subLabel(e)?.let { GbaText(it, size = 9.sp, color = if (e.mega) Pal.Blue else Pal.Muted, maxLines = 1) }
     }
 }
+
+/** Qué forma es, en corto: "Mega X", "Alola", o lo que diga el paréntesis del nombre ("Wash"). */
+private fun subLabel(s: Species): String? =
+    if (s.mega) megaLabel(s) else regionTag(s) ?: Regex("""\((.+)\)""").find(s.name)?.groupValues?.get(1)
 
 private fun regionTag(s: Species): String? = when {
     s.id.endsWith("_alolan") -> "Alola"; s.id.endsWith("_galarian") -> "Galar"
@@ -393,7 +446,7 @@ private fun Battle(s: Species, idx: GameIndex, data: EntryData?) {
     }
 
     if (data != null && data.max.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Dinamax")
+        SectionTitle("Batallas Max")
         data.max.forEach { m ->
             GbaText("${m.moveName}: ${m.damage.toInt()} de daño", size = 13.sp)
             GbaText("Mejor rápido para llenar la barra: ${m.bestFast.name}", size = 12.sp, color = Pal.Muted)
@@ -433,77 +486,97 @@ private fun MoveRow(m: Move, s: Species, pve: String, pvp: String) {
     }
 }
 
-// ---------------------------------------------------------------- FORMAS
+// ---------------------------------------------------------------- FAMILIA
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Forms(s: Species, idx: GameIndex, onSpecies: (String) -> Unit) {
+private fun Family(s: Species, idx: GameIndex, reco: Recommender, open: (String) -> Unit) {
+    val container = LocalContainer.current
+    val owned by container.collection.items.collectAsState()
+    val raids by container.raids.raids.collectAsState()
     val base = idx[s.baseId] ?: s
+    val stages = familyStages(base, idx)
+
+    WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Evoluciones y formas")
+        if (stages.size == 1 && stages.first().size == 1) GbaText("No evoluciona ni tiene otras formas.", size = 13.sp, color = Pal.Muted)
+        else {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                stages.forEachIndexed { i, stage ->
+                    if (i > 0) GbaText("▼", size = 14.sp, color = Pal.Muted)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Viendo el oscuro, se marca su forma normal (el oscuro no es una evolución aparte).
+                        stage.forEach { e -> EvoCell(e, current = e.id == s.id || (s.shadow && e.id == base.id), open) }
+                    }
+                }
+            }
+            GbaText("Tocá uno para verlo. Normal, oscuro y megas también se eligen arriba.", size = 11.sp, color = Pal.Muted,
+                modifier = Modifier.padding(top = 6.dp))
+        }
+    }
+
     val shadow = idx.shadowOf(base)
     val megas = idx.megasOf(base)
-    // Formas con los mismos stats y tipos (disfraces de Pikachu, tamaños de Pumpkaboo) van juntas.
-    val others = idx.byDex[s.dex].orEmpty().filter { it.id != base.id }
-        .groupBy { "${it.atk}|${it.def}|${it.sta}|${it.types}" }.values.toList()
-    val lacks = listOfNotNull("oscuro".takeIf { shadow == null }, "mega".takeIf { megas.isEmpty() },
-        "Dinamax".takeIf { !base.dynamax && !base.gigantamax })
-    if (lacks.isNotEmpty()) GbaText("No tiene: " + lacks.joinToString(" · "), size = 13.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 4.dp))
-
-    if (s.id != base.id) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Forma normal")
-        FormRow(base, "Sin oscuro ni mega.", current = false, onSpecies)
-    }
-    if (shadow != null) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Oscuro")
-        FormRow(shadow, "Ataque ×1.2, defensa ×0.83. Del Team GO Rocket o de incursiones oscuras.", current = s.id == shadow.id, onSpecies)
-        GbaText("Purificado: +2 a cada IV, aprende Return y sube de nivel más barato (90 % del polvo).", size = 12.sp, color = Pal.Muted)
-    }
-    if (megas.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Mega")
-        GbaText("En la incursión suma ×1.1 al daño de todos (×1.3 a los ataques de su tipo).", size = 12.sp, color = Pal.Muted)
-        megas.forEach { m ->
-            FormRow(m, "ATQ ${signed(m.atk - base.atk)} · DEF ${signed(m.def - base.def)} · PS ${signed(m.sta - base.sta)}", current = s.id == m.id, onSpecies)
+    WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Versiones")
+        if (shadow != null) {
+            GbaText("Oscuro: ataque ×1.2, defensa ×0.83. Del Team GO Rocket o de incursiones oscuras.", size = 13.sp)
+            GbaText("Purificado: +2 a cada IV, aprende Return y sube de nivel más barato (90 % del polvo).", size = 12.sp, color = Pal.Muted)
         }
-    }
-    if (base.dynamax || base.gigantamax) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Dinamax")
-        GbaText(
-            (if (base.gigantamax && base.dynamax) "Dinamax y Gigamax (con su ataque G-Max)." else if (base.gigantamax) "Gigamax (con su ataque G-Max)." else "Dinamax.") +
-                " Solo los atrapados en batallas Max.",
-            size = 13.sp,
-        )
-    }
-    if (others.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
-        SectionTitle("Otras formas")
-        others.forEach { g ->
-            if (g.size == 1) FormRow(g.first(), "ATQ ${g.first().atk} · DEF ${g.first().def} · PS ${g.first().sta}", current = s.id == g.first().id, onSpecies)
-            else Column(Modifier.padding(vertical = 3.dp)) {
-                GbaText("${g.size} formas con los mismos stats", size = 13.sp)
-                GbaText(g.joinToString(", ") { Regex("""\((.+)\)""").find(it.name)?.groupValues?.get(1) ?: it.name }, size = 12.sp, color = Pal.Muted)
+        if (megas.isNotEmpty()) {
+            GbaText("Mega: en la incursión suma ×1.1 al daño de todos (×1.3 a los ataques de su tipo).", size = 13.sp,
+                modifier = Modifier.padding(top = if (shadow != null) 6.dp else 0.dp))
+            megas.forEach { m ->
+                GbaText("${megaLabel(m)}: ATQ ${signed(m.atk - base.atk)} · DEF ${signed(m.def - base.def)} · PS ${signed(m.sta - base.sta)}",
+                    size = 12.sp, color = Pal.Muted)
             }
         }
+        if (base.dynamax || base.gigantamax) GbaText(
+            (if (base.gigantamax && base.dynamax) "Dinamax y Gigamax (con su ataque G-Max)" else if (base.gigantamax) "Gigamax (con su ataque G-Max)" else "Dinamax") +
+                ": solo los atrapados en batallas Max.",
+            size = 13.sp, modifier = Modifier.padding(top = if (shadow != null || megas.isNotEmpty()) 6.dp else 0.dp),
+        )
+        val lacks = listOfNotNull("oscuro".takeIf { shadow == null }, "mega".takeIf { megas.isEmpty() },
+            "Dinamax".takeIf { !base.dynamax && !base.gigantamax })
+        if (lacks.isNotEmpty()) GbaText("No tiene: " + lacks.joinToString(" · "), size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 4.dp))
+    }
+
+    // Disfraces y formas con los mismos stats y tipos (Pikachu con gorra, tamaños de Pumpkaboo): juntas, en texto.
+    val inTree = stages.flatten().map { it.id }.toSet()
+    val lookalikes = idx.byDex[base.dex].orEmpty().filter { it.id !in inTree && !it.shadow && !it.mega }
+    if (lookalikes.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Otras formas")
+        GbaText("Mismos stats y tipos que la normal: rinden igual.", size = 12.sp, color = Pal.Muted)
+        GbaText(lookalikes.joinToString(", ") { subLabel(it) ?: it.name }, size = 13.sp)
+    }
+
+    WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Cómo conseguirlo")
+        val mine = owned.count { it.speciesId == s.id || it.speciesId == s.baseId }
+        val inRaids = raids.orEmpty().mapNotNull { it.species?.id }.toSet() + raids.orEmpty().mapNotNull { it.species?.baseId }
+        GbaText("Dónde: " + reco.whereToGet(s, inRaids), size = 13.sp)
+        GbaText("Compañero: ${s.buddyKm} km por caramelo", size = 13.sp)
+        GbaText(if (mine > 0) "Tenés $mine en tu caja" else "No tenés ninguno", size = 13.sp, color = if (mine > 0) Pal.Text else Pal.Muted)
+    }
+}
+
+/**
+ * La familia por etapas, con todas sus formas que rinden distinto: las regionales y las de otro tipo (Raichu de
+ * Alola, Rotom Lavado) en su etapa, y las megas al lado de su forma normal. Las que solo cambian el aspecto no.
+ */
+private fun familyStages(base: Species, idx: GameIndex): List<List<Species>> {
+    val seen = HashSet<String>()
+    return evolutionStages(base, idx).map { stage ->
+        stage.flatMap { st -> listOf(st) + idx.byDex[st.dex].orEmpty().filter { !it.shadow && !it.mega } }
+            .distinctBy { it.id }
+            .filter { seen.add("${it.dex}|${it.atk}|${it.def}|${it.sta}|${it.types}") }
+            .flatMap { listOf(it) + idx.megasOf(it).filter { m -> m.baseId == it.id } }
+            .distinctBy { it.id }
     }
 }
 
 private fun signed(n: Int) = if (n >= 0) "+$n" else "$n"
-
-@Composable
-private fun FormRow(f: Species, text: String, current: Boolean, onSpecies: (String) -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-            .background(if (current) Pal.Select else androidx.compose.ui.graphics.Color.Transparent, com.esmeraldago.app.ui.theme.SmallPixelShape)
-            .clickable(enabled = !current) { onSpecies(f.id) }.padding(vertical = 3.dp),
-    ) {
-        Sprite(f, 52.dp)
-        Spacer(Modifier.width(6.dp))
-        Column(Modifier.weight(1f)) {
-            GbaText(f.displayName + if (current) " (esta)" else "", size = 14.sp, maxLines = 2)
-            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { f.types.forEach { TypeBadge(it, small = true) } }
-            GbaText(text, size = 12.sp, color = Pal.Muted)
-        }
-        if (!current) { Spacer(Modifier.width(6.dp)); GbaText("▶", size = 14.sp, color = Pal.Muted) }
-    }
-}
-
 // ---------------------------------------------------------------- piezas
 
 @Composable

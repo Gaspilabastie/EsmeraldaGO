@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -115,12 +116,12 @@ class PokedexCriticTest {
         capture("${tag}_1resumen")
         rule.onNodeWithText("COMBATE").performClick()
         capture("${tag}_2combate")
-        rule.onNodeWithText("FORMAS").performClick()
-        capture("${tag}_3formas")
+        rule.onNodeWithText("FAMILIA").performClick()
+        capture("${tag}_3familia")
         if (shinyToo) {
-            // El botón de shiny está en el encabezado completo (RESUMEN).
+            // El shiny se ve tocando el sprite del encabezado completo (RESUMEN).
             rule.onNodeWithText("RESUMEN").performClick()
-            rule.onNodeWithText("★ Shiny", substring = true).performClick()
+            rule.onNodeWithContentDescription("Shiny: no").performClick()
             capture("${tag}_4shiny_resumen")
         }
     }

@@ -1,5 +1,6 @@
 package com.esmeraldago.app.ui.raids
 
+import com.esmeraldago.app.ui.common.WeaknessBadges
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -87,8 +88,7 @@ fun RaidsScreen(onBack: () -> Unit, onBoss: (String, String) -> Unit) {
                             }
                         } else {
                             RankRow(0, s, onClick = { onBoss(s.id, r.tier.name) }, title = r.name) {
-                                GbaText("Débil a: " + Types.weaknesses(s.types).joinToString(", ") { Types.es(it) },
-                                    size = 12.sp, color = Pal.Muted)
+                                WeaknessBadges(s.types, Modifier.padding(top = 2.dp))
                                 highlights?.get(r.name)?.forEach { h -> GbaText("★ $h", size = 12.sp, color = Pal.Good) }
                             }
                         }
@@ -148,7 +148,7 @@ fun CountersScreen(bossId: String, tierName: String, onBack: () -> Unit, onSpeci
                     Column(Modifier.weight(1f)) {
                         GbaText("${tier.label} · ${boss.displayName}", size = 15.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { boss.types.forEach { TypeBadge(it, small = true) } }
-                        GbaText("Débil a: " + Types.weaknesses(boss.types).joinToString(", ") { Types.es(it) }, size = 12.sp, color = Pal.Muted)
+                        WeaknessBadges(boss.types, Modifier.padding(top = 3.dp))
                     }
                     GbaText("▶", size = 14.sp, color = Pal.Muted)
                 }

@@ -466,10 +466,16 @@ private fun PixelTab(text: String, sel: Boolean, onClick: () -> Unit, modifier: 
 fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier, types: List<String> = Types.ALL,
                selectedSet: Set<String>? = null) {
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth().padding(horizontal = 6.dp)) {
-        val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
-        val short = maxWidth / 6 < 62.dp * fontScale
+        // Tantas columnas como entren con el nombre más largo completo (6 en un teléfono común, menos con letra grande).
+        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val longest = with(density) {
+            types.maxOf { measurer.measure(Types.es(it).uppercase(), gbaStyle(11.sp)).size.width }.toDp()
+        }
+        val cell = longest + 22.dp // insignia (borde 1 + relleno 4 por lado) + caja de selección (4 por lado) + separación
+        val cols = (6 downTo 3).firstOrNull { maxWidth / it >= cell } ?: 3
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            types.chunked(6).forEach { row ->
+            types.chunked(cols).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     row.forEach { t ->
                         val sel = selectedSet?.contains(t) ?: (t == selected)
@@ -481,9 +487,9 @@ fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier 
                                 .selectable(selected = sel, role = Role.RadioButton) { onSelect(t) }
                                 .padding(4.dp),
                             contentAlignment = Alignment.Center,
-                        ) { TypeBadge(t, Modifier.fillMaxWidth(), small = true, abbreviated = short) }
+                        ) { TypeBadge(t, Modifier.fillMaxWidth(), small = true) }
                     }
-                    repeat(6 - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }

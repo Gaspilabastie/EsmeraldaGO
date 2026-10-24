@@ -1,5 +1,6 @@
 package com.esmeraldago.app.ui.teams
 
+import com.esmeraldago.app.ui.common.WeaknessBadges
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -104,7 +105,7 @@ private fun CandidateRow(c: PvpCandidate, role: String, idx: GameIndex, onOwned:
             }
             if (c.needsEvolve) GbaText("Los ataques se definen al evolucionar.", size = 11.sp, color = Pal.Muted)
             if (!c.cost.isZero) GbaText("Subir: ${costText(c.cost)}", size = 11.sp, color = Pal.Muted)
-            GbaText("Débil a: " + Types.weaknesses(c.species.types).joinToString(", ") { Types.es(it) }, size = 11.sp, color = Pal.Muted)
+            WeaknessBadges(c.species.types, Modifier.padding(top = 2.dp))
         }
     }
 }

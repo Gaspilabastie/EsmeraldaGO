@@ -1,5 +1,6 @@
 package com.esmeraldago.app.ui.max
 
+import com.esmeraldago.app.ui.common.WeaknessBadges
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -71,7 +72,7 @@ fun MaxBattleScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                     Column(Modifier.weight(1f)) {
                         GbaText(boss.displayName, size = 16.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { boss.types.forEach { TypeBadge(it, small = true) } }
-                        GbaText("Débil a: " + Types.weaknesses(boss.types).joinToString(", ") { Types.es(it) }, size = 12.sp, color = Pal.Muted)
+                        WeaknessBadges(boss.types, Modifier.padding(top = 3.dp))
                     }
                 }
                 Spacer(Modifier.height(6.dp))

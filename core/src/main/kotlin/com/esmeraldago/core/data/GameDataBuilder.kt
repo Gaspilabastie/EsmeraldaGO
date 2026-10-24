@@ -37,8 +37,15 @@ class GameDataBuilder {
         val typeMaxMove = HashMap<String, String>()
         /** VN_BM_xxx -> (tipo, vfxName). */
         val maxMoves = HashMap<String, Pair<String, String>>()
-        /** (pokemonId, form?) habilitados como Gigamax ("allowedSourdoughPokemon"). */
+        /** (pokemonId, form?) habilitados como Gigamax según las listas compartidas ("allowedSourdoughPokemon", formato viejo). */
         val allowedGmax = HashSet<Pair<String, String?>>()
+        /**
+         * Modos Max por Pokémon según sus "breadOverrides" (formato nuevo). Solo los traen las especies cuyo modo YA
+         * salió (tienen el modelo y la escala listos); las listas compartidas se cargan antes del lanzamiento:
+         * Corviknight figura como Gigamax en allowedSourdoughPokemon sin haber salido.
+         */
+        val overrideDynamax = HashSet<Pair<String, String?>>()
+        val overrideGmax = HashSet<Pair<String, String?>>()
     }
 
     /** Están en Pokémon GO aunque PvPoke los marque como no lanzados (contrastado con onemorecatch.site, 19/10/2026). */
@@ -150,8 +157,8 @@ class GameDataBuilder {
                             val mode = o.asJsonObject.str("breadMode") ?: return@forEach
                             when {
                                 // BREAD_SPECIAL_MODE: Dinamax con ataque Max propio (Zacian, Zamazenta, Eternatus).
-                                mode == "BREAD_MODE" || mode == "BREAD_SPECIAL_MODE" -> out.dynamax += pid to form
-                                mode.startsWith("BREAD_DOUGH_MODE") -> out.allowedGmax += pid to form
+                                mode == "BREAD_MODE" || mode == "BREAD_SPECIAL_MODE" -> out.overrideDynamax += pid to form
+                                mode.startsWith("BREAD_DOUGH_MODE") -> out.overrideGmax += pid to form
                             }
                         }
                     }
@@ -242,9 +249,13 @@ class GameDataBuilder {
             }
         }
 
-        val dynamaxIds = miners.dynamax.mapNotNull { (p, f) -> resolve(p, f) }.toHashSet()
+        fun resolveAll(set: Set<Pair<String, String?>>) = set.mapNotNull { (p, f) -> resolve(p, f) }.toHashSet()
+        // Formato nuevo (breadOverrides por Pokémon) manda: las listas compartidas incluyen lo que todavía no salió.
+        // Si un game master viejo no los trae, se cae a las listas compartidas.
+        val perPokemon = miners.overrideDynamax.isNotEmpty() || miners.overrideGmax.isNotEmpty()
+        val dynamaxIds = resolveAll(if (perPokemon) miners.overrideDynamax else miners.dynamax)
         val gmaxIds = miners.gmax.mapNotNull { (key, vn) -> resolve(key.first, key.second)?.let { it to vn } }.toMap()
-        val allowedGmaxIds = miners.allowedGmax.mapNotNull { (p, f) -> resolve(p, f) }.toHashSet()
+        val allowedGmaxIds = resolveAll(if (perPokemon) miners.overrideGmax else miners.allowedGmax)
 
         return raw.mapNotNull { p ->
             val id = p.str("speciesId") ?: return@mapNotNull null
@@ -262,7 +273,7 @@ class GameDataBuilder {
             // SOURDOUGH también mapea movimientos Max exclusivos (Behemoth Blade, Dynamax Cannon...): solo "gmax_*" es Gigamax.
             val mappedVn = if (battleForm) gmaxIds[id] else null
             val isGmaxMove = mappedVn?.let { miners.maxMoves[it]?.second?.startsWith("gmax") } == true
-            // G-Max solo si además está habilitado (allowedSourdoughPokemon); el resto son Max Attacks exclusivos.
+            // G-Max solo si además el Pokémon tiene el modo Gigamax propio (ya salió); el resto son Max Attacks exclusivos.
             val gmaxVn = mappedVn?.takeIf { isGmaxMove && id in allowedGmaxIds }
             val specialVn = mappedVn?.takeIf { !isGmaxMove }
             val gmaxInfo = gmaxVn?.let { miners.maxMoves[it] }
