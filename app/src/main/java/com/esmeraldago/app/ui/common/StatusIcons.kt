@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.Dp
 import kotlin.math.floor
 
 /**
- * Íconos pixel-art de estado (oscuro, shiny, con suerte, purificado), dibujados celda por celda.
+ * Íconos pixel-art de estado (oscuro, shiny, con suerte, purificado, Dinamax, Gigamax), dibujados celda por celda.
  * Cada fila es un renglón de píxeles; cada carácter es un color de la paleta ('.' = transparente).
  */
 private class PixelArt(val rows: List<String>, val palette: Map<Char, Color>)
@@ -92,6 +92,39 @@ private val PURIFIED = PixelArt(
     mapOf('o' to Color(0xFF2058A8), '+' to Color(0xFF78C8F8), '#' to Color(0xFFFFFFFF)),
 )
 
+/** Nube roja de energía Max: "puede Dinamaxizar". */
+private val MAX_CLOUD = PixelArt(
+    listOf(
+        "....ooo......",
+        "...o+++o.ooo.",
+        "..o++#++o+++o",
+        ".oo+###++#++o",
+        "o+++###+###+o",
+        "o++#####+#++o",
+        "o+++###+++++o",
+        ".o+++++++++o.",
+        "..ooooooooo..",
+    ),
+    mapOf('o' to Color(0xFF6A0A28), '+' to Color(0xFFE0306A), '#' to Color(0xFFFFB0C8)),
+)
+
+/** Nube Max más grande y oscura, con un núcleo dorado: "tiene forma Gigamax". */
+private val GMAX_CLOUD = PixelArt(
+    listOf(
+        "...ooo...ooo.",
+        "..o+++o.o+++o",
+        ".o++#++o++#+o",
+        "o++#*#+++#*#o",
+        "o+##*##+##*#o",
+        "o++###+++###o",
+        "o+++#++#++#+o",
+        ".o+++++++++o.",
+        "o+++++#++++o.",
+        ".ooooooooooo.",
+    ),
+    mapOf('o' to Color(0xFF4A0018), '+' to Color(0xFFB0103A), '#' to Color(0xFFF05080), '*' to Color(0xFFFFD030)),
+)
+
 /** Todas las figuras se dibujan sobre la misma grilla: así el píxel mide lo mismo en todos los íconos. */
 private const val GRID = 13
 
@@ -116,3 +149,5 @@ private fun PixelIcon(art: PixelArt, size: Dp, modifier: Modifier = Modifier) {
 @Composable fun ShinyIcon(size: Dp, modifier: Modifier = Modifier) = PixelIcon(SPARKLES, size, modifier)
 @Composable fun LuckyIcon(size: Dp, modifier: Modifier = Modifier) = PixelIcon(CLOVER, size, modifier)
 @Composable fun PurifiedIcon(size: Dp, modifier: Modifier = Modifier) = PixelIcon(PURIFIED, size, modifier)
+@Composable fun DynamaxIcon(size: Dp, modifier: Modifier = Modifier) = PixelIcon(MAX_CLOUD, size, modifier)
+@Composable fun GigamaxIcon(size: Dp, modifier: Modifier = Modifier) = PixelIcon(GMAX_CLOUD, size, modifier)

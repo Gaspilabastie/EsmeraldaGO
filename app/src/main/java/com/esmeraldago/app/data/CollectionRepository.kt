@@ -104,4 +104,24 @@ class CollectionRepository(context: Context, private val scope: CoroutineScope) 
     }
 
     fun dismissError() { _error.value = null }
+
+    /** La caja como JSON, para guardar una copia fuera de la app (Opciones → Copia de seguridad). */
+    fun exportJson(): String = GameDataSources.json.encodeToString(serializer, _items.value)
+
+    /**
+     * Agrega los Pokémon de una copia: los que ya están (mismo uid) se dejan como están. Devuelve cuántos sumó.
+     * Lanza si el archivo no es una copia de EsmeraldaGO.
+     */
+    fun importJson(text: String): Int {
+        val incoming = GameDataSources.json.decodeFromString(serializer, text)
+        var added = 0
+        _items.update { list ->
+            val known = list.map { it.uid }.toSet()
+            val fresh = incoming.filter { it.uid.isNotBlank() && it.uid !in known }
+            added = fresh.size
+            list + fresh
+        }
+        persist()
+        return added
+    }
 }

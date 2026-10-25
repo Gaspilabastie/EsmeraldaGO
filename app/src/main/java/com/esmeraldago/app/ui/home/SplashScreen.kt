@@ -26,7 +26,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.esmeraldago.app.data.UpdateState
 import com.esmeraldago.app.ui.theme.GbaText
+import com.esmeraldago.app.ui.theme.PixelButton
+import androidx.compose.runtime.collectAsState
 import com.esmeraldago.app.ui.theme.LocalAnimations
 import kotlinx.coroutines.delay
 import kotlin.math.sin
@@ -60,6 +63,7 @@ fun SplashScreen(ready: Boolean, status: String, onDone: () -> Unit) {
                 color = if (shown) Color(0xFFF8F8F8) else Color.Transparent, shadow = if (shown) Color(0xFF0C3B37) else Color.Transparent)
             Spacer(Modifier.height(10.dp))
             GbaText("compañero de Pokémon GO", size = 12.sp, color = Color(0xFFBFEBDD), shadow = Color(0xFF0C3B37))
+            UpdateLine()
         }
     }
 }
@@ -84,5 +88,46 @@ private fun TitleSky() {
                 x += px * 5
             }
         }
+    }
+}
+
+/**
+ * La actualización, si hay: avance de la descarga e instalación automáticas, o un botón para actualizar
+ * (con datos móviles no se baja sola).
+ */
+@Composable
+private fun UpdateLine() {
+    val updates = com.esmeraldago.app.ui.common.LocalContainer.current.updates
+    val state by updates.state.collectAsState()
+    AskNotificationsWhileUpdating(state)
+    val text = when (val s = state) {
+        is UpdateState.Downloading -> "Bajando la versión ${s.release.version}… ${(s.progress * 100).toInt()}%"
+        is UpdateState.Ready -> "Instalando la versión ${s.release.version}…"
+        is UpdateState.Failed -> s.message
+        else -> null
+    }
+    Spacer(Modifier.height(10.dp))
+    when (val s = state) {
+        is UpdateState.Available -> PixelButton("ACTUALIZAR A ${s.release.version}", { updates.download(s.release) }, color = Color(0xFFF8D838))
+        else -> text?.let { GbaText(it, size = 12.sp, color = Color(0xFFF8F8F8), shadow = Color(0xFF0C3B37)) }
+    }
+}
+
+/**
+ * Al empezar a bajar una actualización (Android 13+), pide una vez permiso de notificaciones: Android cierra la app
+ * para reemplazarla y el aviso "se actualizó, tocá para abrirla" es la forma de volver.
+ */
+@Composable
+fun AskNotificationsWhileUpdating(state: UpdateState) {
+    if (android.os.Build.VERSION.SDK_INT < 33) return
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
+    var asked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state is UpdateState.Downloading) {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (state is UpdateState.Downloading && !granted && !asked) { asked = true; ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
     }
 }

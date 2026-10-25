@@ -71,6 +71,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Al volver de dar el permiso de "instalar apps desconocidas", la actualización ya bajada se instala sola.
+        container.updates.resumePendingInstall()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -155,13 +161,15 @@ private fun AppNav() {
     NavHost(nav, startDestination = "home") {
         composable("home") { HomeScreen(onOpen = { nav.navigate(it) }) }
         composable("pokedex") { com.esmeraldago.app.ui.pokedex.PokedexScreen(back, onSpecies = { nav.navigate("species/$it") }) }
-        composable("rankings") { RankingsScreen(back, onSpecies = { nav.navigate("species/$it") }) }
+        composable("rankings?focus={focus}", listOf(navArgument("focus") { type = NavType.StringType; nullable = true; defaultValue = null })) {
+            RankingsScreen(back, onSpecies = { id -> nav.navigate("species/$id") }, focus = it.arguments?.getString("focus"))
+        }
         composable("species/{id}", listOf(navArgument("id") { type = NavType.StringType })) {
             // De una entrada a otra se reemplaza: "atrás" vuelve a la pantalla de donde se entró a la Pokédex, no
             // recorre todas las entradas visitadas.
             SpeciesDetailScreen(it.arguments!!.getString("id")!!, back, onSpecies = { id ->
                 nav.navigate("species/$id") { popUpTo(it.destination.id) { inclusive = true } }
-            })
+            }, onRanking = { focus -> nav.navigate("rankings?focus=$focus") })
         }
         composable("raids") {
             RaidsScreen(back, onBoss = { id, tier -> nav.navigate("counters/$id/$tier") })

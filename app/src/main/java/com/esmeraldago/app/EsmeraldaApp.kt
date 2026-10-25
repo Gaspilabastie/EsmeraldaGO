@@ -12,6 +12,7 @@ import com.esmeraldago.app.data.RaidRepository
 import com.esmeraldago.app.data.SettingsRepository
 import com.esmeraldago.app.data.SpritePrefetcher
 import com.esmeraldago.app.data.UpdateRepository
+import com.esmeraldago.app.data.onUnmeteredNetwork
 import com.esmeraldago.app.scan.OcrScanner
 import com.esmeraldago.app.scan.ScanSession
 import kotlinx.coroutines.CoroutineScope
@@ -33,10 +34,16 @@ class EsmeraldaApp : Application(), ImageLoaderFactory {
         container.game.load()
         // En los tests (Robolectric) no se toca la red.
         if (android.os.Build.FINGERPRINT == "robolectric") return
+        // Recién actualizada: se cierra el aviso de "se actualizó" y se ofrecen las novedades.
+        getSystemService(android.app.NotificationManager::class.java).cancel(com.esmeraldago.app.data.UpdatedReceiver.NOTIFICATION_ID)
+        container.updates.takeFreshNotes()?.let { (v, _) ->
+            container.notify("EsmeraldaGO se actualizó a $v.", "NOVEDADES") { container.pendingNavigation.value = "settings" }
+        }
+        // Versión nueva: con Wi-Fi se baja e instala sola (la pantalla de inicio muestra el avance); con datos
+        // móviles, se ofrece.
         container.updates.check(quiet = true) { r ->
-            container.notify("¡Hay una versión nueva de EsmeraldaGO (${r.version})!", "VER") {
-                container.pendingNavigation.value = "settings"
-            }
+            if (container.settings.state.value.autoUpdate && onUnmeteredNetwork()) container.updates.download(r)
+            else container.notify("Hay una versión nueva de EsmeraldaGO (${r.version}).", "ACTUALIZAR") { container.updates.download(r) }
         }
         container.scope.launch {
             val ready = container.game.state.first { it !is GameState.Loading } as? GameState.Ready ?: return@launch
@@ -68,6 +75,7 @@ class AppContainer(app: Application) {
     val game = GameRepository(app, scope, settings)
     val collection = CollectionRepository(app, scope)
     val raids = RaidRepository(scope)
+    val events = com.esmeraldago.app.data.EventsRepository(app, scope)
     val updates = UpdateRepository(app, scope)
     val ocr = OcrScanner(app)
     val scan = ScanSession(

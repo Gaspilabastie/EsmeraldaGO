@@ -54,18 +54,26 @@ private enum class Tab(val label: String) { PVE("PvE"), PVP("PvP"), MAX("Dinamax
 /** El tier se mide contra el #1 del ranking COMPLETO (sin filtros): filtrar no sube de tier a nadie. */
 private const val TIER_LEGEND = "Tier (% del #1 del ranking completo, sin filtros, estilo GO Hub): S ≥95 · A+ ≥90 · A ≥85 · B+ ≥80 · B ≥75 · C ≥70 · D <70"
 
+/**
+ * [focus] ("pve:fire:charizard", "pvp:GREAT:medicham", "max:fire:charizard") abre la pestaña y el tipo o liga
+ * indicados, baja hasta ese Pokémon y lo resalta: así se llega desde su entrada de Pokédex.
+ */
 @Composable
-fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
+fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit, focus: String? = null) {
+    val f = focus?.split(":")
+    val focusId = f?.getOrNull(2)
     // Todo el estado de filtros vive acá: cambiar de pestaña no lo reinicia.
-    var tab by rememberSaveable { mutableStateOf(Tab.PVE) }
-    var pveType by rememberSaveable { mutableStateOf("fighting") }
+    var tab by rememberSaveable { mutableStateOf(when (f?.getOrNull(0)) { "pvp" -> Tab.PVP; "max" -> Tab.MAX; else -> Tab.PVE }) }
+    var pveType by rememberSaveable { mutableStateOf(f?.takeIf { it[0] == "pve" }?.getOrNull(1) ?: "fighting") }
     var pveShadow by rememberSaveable { mutableStateOf(true) }
     var pveMega by rememberSaveable { mutableStateOf(true) }
     var pveElite by rememberSaveable { mutableStateOf(true) }
-    var league by rememberSaveable { mutableStateOf(League.GREAT) }
+    var league by rememberSaveable {
+        mutableStateOf(f?.takeIf { it[0] == "pvp" }?.getOrNull(1)?.let { runCatching { League.valueOf(it) }.getOrNull() } ?: League.GREAT)
+    }
     var pvpShadow by rememberSaveable { mutableStateOf(true) }
     var pvpAllowElite by rememberSaveable { mutableStateOf(true) }
-    var maxType by rememberSaveable { mutableStateOf("fighting") }
+    var maxType by rememberSaveable { mutableStateOf(f?.takeIf { it[0] == "max" }?.getOrNull(1) ?: "fighting") }
     var maxTanks by rememberSaveable { mutableStateOf(false) }
     // "No Budget": legendarios, singulares y ultraentes. Prendido = se ven (como los demás chips).
     var nonBudget by rememberSaveable { mutableStateOf(true) }
@@ -77,10 +85,10 @@ fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
         Spacer(Modifier.height(4.dp))
         WithGame { idx, _ ->
             when (tab) {
-                Tab.PVE -> PveTab(idx, onSpecies, pveType, { pveType = it }, pveShadow, { pveShadow = it },
+                Tab.PVE -> PveTab(idx, onSpecies, focusId, pveType, { pveType = it }, pveShadow, { pveShadow = it },
                     pveMega, { pveMega = it }, pveElite, { pveElite = it }, nonBudget, { nonBudget = it })
-                Tab.PVP -> PvpTab(idx, onSpecies, league, { league = it }, pvpShadow, { pvpShadow = it }, pvpAllowElite, { pvpAllowElite = it }, nonBudget, { nonBudget = it })
-                Tab.MAX -> MaxTab(idx, onSpecies, maxType, { maxType = it }, maxTanks, { maxTanks = it }, nonBudget, { nonBudget = it })
+                Tab.PVP -> PvpTab(idx, onSpecies, focusId, league, { league = it }, pvpShadow, { pvpShadow = it }, pvpAllowElite, { pvpAllowElite = it }, nonBudget, { nonBudget = it })
+                Tab.MAX -> MaxTab(idx, onSpecies, focusId, maxType, { maxType = it }, maxTanks, { maxTanks = it }, nonBudget, { nonBudget = it })
             }
         }
     }
@@ -89,7 +97,7 @@ fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PveTab(
-    idx: GameIndex, onSpecies: (String) -> Unit,
+    idx: GameIndex, onSpecies: (String) -> Unit, focusId: String?,
     type: String, setType: (String) -> Unit,
     shadow: Boolean, setShadow: (Boolean) -> Unit,
     mega: Boolean, setMega: (Boolean) -> Unit,
@@ -105,14 +113,15 @@ private fun PveTab(
     }
     val results = full?.filter { r ->
         (shadow || !r.species.shadow) && (mega || !r.species.mega) && (elite || !r.usesElite) && (nonBudget || !r.species.nonBudget)
-    }?.take(60)
+    }?.let { takeWithFocus(it, 60, focusId) { r -> r.species.id } }
 
     val list = results.orEmpty()
+    val listState = rememberFocusScroll(list.indexOfFirst { it.species.id == focusId })
     val top = full?.firstOrNull()?.score ?: 1.0
     // El % de DPS sí es contra el #1 que se ve (el #1 de la lista siempre muestra 100%).
     val topDps = list.firstOrNull()?.dps ?: 1.0
     // Los filtros son los primeros ítems de la lista: se van con el scroll (en pantallas chicas no tapan los resultados).
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item(key = "filters") {
             Column {
                 TypePicker(type, setType)
@@ -131,7 +140,7 @@ private fun PveTab(
             }
         }
         itemsIndexed(list, key = { _, r -> "${r.species.id}|${r.fast.id}|${r.charged.id}" }) { i, r ->
-            RankRow(i + 1, r.species, onClick = { onSpecies(r.species.id) },
+            RankRow(i + 1, r.species, onClick = { onSpecies(r.species.id) }, highlight = r.species.id == focusId,
                 trailing = { RankValue(r.score, top, fmt1(r.score)) }) {
                 Column {
                     MoveLabel(r.fast, r.species)
@@ -146,7 +155,7 @@ private fun PveTab(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PvpTab(
-    idx: GameIndex, onSpecies: (String) -> Unit,
+    idx: GameIndex, onSpecies: (String) -> Unit, focusId: String?,
     league: League, setLeague: (League) -> Unit,
     shadow: Boolean, setShadow: (Boolean) -> Unit,
     allowElite: Boolean, setAllowElite: (Boolean) -> Unit,
@@ -162,9 +171,10 @@ private fun PvpTab(
             // El puntaje de PvPoke está simulado CON su moveset recomendado: si ese moveset necesita una
             // MT Élite y no querés gastarla, el Pokémon se oculta (sin ese ataque su puntaje sería otro).
             .filter { (_, r, s) -> allowElite || r.moveset.none { s.isElite(it) } }
-            .take(150).toList()
+            .toList().let { takeWithFocus(it, 150, focusId) { r -> r.third.id } }
     }
-    LazyColumn(Modifier.fillMaxSize()) {
+    val listState = rememberFocusScroll(rows.indexOfFirst { it.third.id == focusId })
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item(key = "filters") {
             Column {
                 PixelTabs(League.entries, league, { it.label }, setLeague)
@@ -181,7 +191,7 @@ private fun PvpTab(
             }
         }
         itemsIndexed(rows, key = { _, r -> r.second.id }) { _, (rank, r, s) ->
-            RankRow(rank, s, onClick = { onSpecies(s.id) }, trailing = { RankValue(r.score, topScore, fmt1(r.score)) }) {
+            RankRow(rank, s, onClick = { onSpecies(s.id) }, highlight = s.id == focusId, trailing = { RankValue(r.score, topScore, fmt1(r.score)) }) {
                 Column {
                     r.moveset.mapNotNull { idx.move(it) }.forEach { MoveLabel(it, s) }
                     r.nonEliteMoveset(s)?.takeIf { it.isNotEmpty() }?.let { alt ->
@@ -197,7 +207,7 @@ private fun PvpTab(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MaxTab(
-    idx: GameIndex, onSpecies: (String) -> Unit,
+    idx: GameIndex, onSpecies: (String) -> Unit, focusId: String?,
     type: String, setType: (String) -> Unit,
     tanks: Boolean, setTanks: (Boolean) -> Unit,
     nonBudget: Boolean, setNonBudget: (Boolean) -> Unit,
@@ -207,12 +217,13 @@ private fun MaxTab(
         if (tanks) MaxCalc.topTanks(idx, settings.rankLevel, limit = 200)
         else MaxCalc.topAttackers(type, idx, settings.rankLevel, settings.maxMoveLevel, limit = 200)
     }
-    val results = full?.filter { nonBudget || !it.species.nonBudget }?.take(40)
+    val results = full?.filter { nonBudget || !it.species.nonBudget }?.let { takeWithFocus(it, 40, focusId) { r -> r.species.id } }
     val list = results.orEmpty()
+    val listState = rememberFocusScroll(list.indexOfFirst { it.species.id == focusId })
     // Tier y barra contra el #1 del ranking completo (sin filtros).
     val top = full?.firstOrNull()?.let { if (tanks) it.bulk else it.maxDamage } ?: 1.0
     val topShown = list.firstOrNull()?.let { if (tanks) it.bulk else it.maxDamage } ?: 1.0
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item(key = "filters") {
             Column {
                 FlowRow(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -232,7 +243,7 @@ private fun MaxTab(
         }
         itemsIndexed(list, key = { _, r -> "${r.species.id}|${r.gigantamax}|${r.fast.id}" }) { i, r ->
             val value = if (tanks) r.bulk else r.maxDamage
-            RankRow(i + 1, r.species, onClick = { onSpecies(r.species.id) }, title = r.displayName,
+            RankRow(i + 1, r.species, onClick = { onSpecies(r.species.id) }, title = r.displayName, highlight = r.species.id == focusId,
                 gmax = r.gigantamax, dynamax = !r.gigantamax,
                 trailing = { RankValue(value, top, if (tanks) "${(value / 1000).toInt()}k" else value.toInt().toString(), 72.dp) }) {
                 Column {
@@ -244,4 +255,21 @@ private fun MaxTab(
             }
         }
     }
+}
+
+/** Los primeros [n], pero si el Pokémon buscado está más abajo, la lista llega hasta él. */
+private fun <T> takeWithFocus(list: List<T>, n: Int, focusId: String?, id: (T) -> String): List<T> {
+    val i = if (focusId == null) -1 else list.indexOfFirst { id(it) == focusId }
+    return list.take(maxOf(n, i + 1))
+}
+
+/** Estado de la lista que, la primera vez que aparece el Pokémon buscado, baja hasta su fila (la 0 son los filtros). */
+@Composable
+private fun rememberFocusScroll(index: Int): androidx.compose.foundation.lazy.LazyListState {
+    val state = androidx.compose.foundation.lazy.rememberLazyListState()
+    var done by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(index) {
+        if (!done && index >= 0) { state.scrollToItem(index + 1); done = true }
+    }
+    return state
 }

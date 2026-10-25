@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
 import com.esmeraldago.app.BuildConfig
 import com.esmeraldago.core.data.GameDataSources
 import kotlinx.coroutines.CoroutineScope
@@ -38,13 +37,38 @@ sealed interface UpdateState {
 }
 
 /**
- * Busca la última release del repo de GitHub ([BuildConfig.UPDATE_REPO]), descarga su APK y abre el
- * instalador de Android. Como el APK está firmado con la misma clave, se instala encima y se conservan los datos.
+ * Busca la última release del repo de GitHub ([BuildConfig.UPDATE_REPO]), descarga su APK y la instala con
+ * [SelfInstaller] (sin la pantalla del instalador del sistema). Como el APK está firmado con la misma clave, se
+ * instala encima y se conservan los datos. Guarda las novedades para mostrarlas al abrir la versión nueva.
  */
 class UpdateRepository(private val context: Context, private val scope: CoroutineScope) {
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state.asStateFlow()
     private var job: Job? = null
+    private val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
+
+    /** Novedades de la versión instalada si recién se actualizó (una sola vez): (versión, notas). */
+    fun takeFreshNotes(): Pair<String, String>? {
+        val v = prefs.getString("pendingVersion", null) ?: return null
+        val notes = prefs.getString("pendingNotes", "").orEmpty()
+        if (v != currentVersion) return null
+        prefs.edit().remove("pendingVersion").putString("lastNotesVersion", v).putString("lastNotes", notes).apply()
+        return v to notes
+    }
+
+    /** Las novedades de la versión instalada (si se instaló desde la app), para verlas en Opciones. */
+    val installedNotes: String?
+        get() = prefs.getString("lastNotes", null)?.takeIf { prefs.getString("lastNotesVersion", null) == currentVersion }
+
+    fun installFailed(message: String) { _state.value = UpdateState.Failed("No se instaló: $message") }
+
+    /** Al volver de la pantalla de permisos: si el APK ya estaba bajado, se instala sin volver a tocar nada. */
+    fun resumePendingInstall() {
+        val s = _state.value as? UpdateState.Ready ?: return
+        if (canInstall()) install(s.apk)
+    }
+
+    private fun canInstall() = Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
 
     val currentVersion: String get() = BuildConfig.VERSION_NAME
     val repoUrl: String get() = "https://github.com/${BuildConfig.UPDATE_REPO}/releases"
@@ -79,20 +103,24 @@ class UpdateRepository(private val context: Context, private val scope: Coroutin
         }
     }
 
-    /** Abre el instalador. La primera vez Android pide permitir "instalar apps desconocidas" desde EsmeraldaGO. */
+    /**
+     * Instala el APK. La primera vez Android pide permitir "instalar apps desconocidas" desde EsmeraldaGO: se abre
+     * esa pantalla y, al volver, [resumePendingInstall] sigue solo.
+     */
     fun install(apk: File) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+        if (!canInstall()) {
             context.startActivity(
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             return
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", apk)
-        context.startActivity(
-            Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
+        (state.value as? UpdateState.Ready)?.release?.let {
+            prefs.edit().putString("pendingVersion", it.version).putString("pendingNotes", it.notes).apply()
+        }
+        scope.launch(Dispatchers.IO) {
+            runCatching { SelfInstaller.install(context, apk) }.onFailure { installFailed(it.message ?: "error") }
+        }
     }
 
     /**

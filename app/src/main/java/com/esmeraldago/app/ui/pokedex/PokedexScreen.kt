@@ -1,6 +1,7 @@
 package com.esmeraldago.app.ui.pokedex
 
 import com.esmeraldago.core.GameIndex
+import com.esmeraldago.app.ui.rankings.GMAX_SUFFIX
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -27,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esmeraldago.app.ui.common.LocalContainer
 import com.esmeraldago.app.ui.common.SearchField
-import com.esmeraldago.app.ui.common.SpeciesTags
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.WithGame
 import com.esmeraldago.app.ui.common.dexLabel
@@ -76,6 +76,8 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                     .filter { !onlyMine || it.baseId in ownedIds }
                     .filter { q.isEmpty() || it.name.lowercase().contains(q) || it.dex.toString() == q }
                     .sortedWith(compareBy({ it.dex }, { it.shadow }, { it.mega }))
+                    // Con "Otras versiones", cada Gigamax como una fila más, después de su forma normal.
+                    .flatMap { s -> listOf(s to false) + listOfNotNull((s to true).takeIf { forms && s.gigantamax && !s.shadow && !s.mega }) }
                     .toList()
             }
             val caught = remember(idx, ownedIds) { idx.byDex.count { (_, f) -> f.any { it.id in ownedIds } } }
@@ -88,16 +90,17 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                         TypePicker(type ?: "", { t -> type = if (t == type) null else t })
                         FlowRow(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            ToggleChip("Oscuros y Megas", forms, { forms = it })
+                            ToggleChip("Otras versiones", forms, { forms = it })
                             ToggleChip("Solo los míos", onlyMine, { onlyMine = it })
                         }
-                        GbaText("${list.size} especies · tenés $caught de ${idx.byDex.size}", size = 12.sp, color = Pal.Muted,
+                        GbaText("${list.size} entradas · tenés $caught de ${idx.byDex.size}", size = 12.sp, color = Pal.Muted,
                             modifier = Modifier.padding(horizontal = 10.dp))
                     }
                 }
-                items(list, key = { it.id }) { s ->
+                items(list, key = { (s, gmax) -> if (gmax) s.id + GMAX_SUFFIX else s.id }) { (s, gmax) ->
                     WindowBox(
-                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp).clickable { onSpecies(s.id) },
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp)
+                            .clickable { onSpecies(if (gmax) s.id + GMAX_SUFFIX else s.id) },
                         padding = 6.dp,
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -106,13 +109,12 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                                 // Poké Ball de "atrapado", como en la Pokédex de Esmeralda.
                                 if (s.baseId in ownedIds) GbaText("●", size = 14.sp, color = Pal.Red)
                             }
-                            Sprite(s, 52.dp)
+                            Sprite(s, 52.dp, gmax = gmax, dynamaxIcon = s.dynamax, gigamaxIcon = s.gigantamax)
                             Spacer(Modifier.width(6.dp))
                             Column(Modifier.weight(1f)) {
-                                GbaText(s.displayName, size = 15.sp, maxLines = 2)
+                                GbaText(s.displayName + if (gmax) " (Gigamax)" else "", size = 15.sp, maxLines = 2)
                                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                                     s.types.forEach { TypeBadge(it, small = true) }
-                                    SpeciesTags(s, gmax = s.gigantamax, dynamax = s.dynamax)
                                 }
                                 GbaText("ATQ ${s.atk} · DEF ${s.def} · PS ${s.sta} · PC máx ${PokeMath.cp(s, 40.0, Ivs.PERFECT, idx)}",
                                     size = 11.sp, color = Pal.Muted)

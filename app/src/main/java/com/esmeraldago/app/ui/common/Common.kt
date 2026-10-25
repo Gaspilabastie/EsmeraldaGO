@@ -1,8 +1,11 @@
 package com.esmeraldago.app.ui.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -150,11 +153,13 @@ private object TrimTransparent : coil.transform.Transformation {
 /** Sprite de un Pokémon de tu caja: muestra su versión shiny y los íconos de estado. */
 @Composable
 fun Sprite(p: com.esmeraldago.core.model.OwnedPokemon, species: Species, size: Dp = 56.dp) =
-    Sprite(species, size, shadow = p.shadow, shiny = p.shiny, purified = p.purified, lucky = p.lucky)
+    Sprite(species, size, shadow = p.shadow, shiny = p.shiny, purified = p.purified, lucky = p.lucky,
+        dynamaxIcon = p.dynamax, gigamaxIcon = p.gigantamax)
 
 /**
- * Sprite con íconos de estado en las esquinas: llamita violeta (oscuro), destello (shiny),
- * estrella dorada (con suerte) y destello celeste (purificado).
+ * Sprite con íconos de estado en las esquinas: llamita violeta (oscuro), destello (shiny), trébol (con suerte),
+ * destello celeste (purificado) y nube roja (Dinamax; con núcleo dorado, Gigamax). Van en el sprite y no como
+ * etiquetas al lado de los tipos.
  */
 @Composable
 fun Sprite(
@@ -163,6 +168,8 @@ fun Sprite(
     /** false cuando el destello ya lo muestra otro control (el botón shiny de la Pokédex). */
     shinyIcon: Boolean = true,
     gmax: Boolean = false,
+    dynamaxIcon: Boolean = false,
+    gigamaxIcon: Boolean = false,
 ) {
     val urls = remember(species.id, shiny, gmax) { spriteUrls(species, shiny, gmax) }
     // Atados a las URL, no a la especie: el oscuro usa la misma imagen que el normal y, al cambiar entre ellos,
@@ -194,6 +201,9 @@ fun Sprite(
         if (purified) PurifiedIcon(icon, Modifier.align(Alignment.BottomStart))
         if (shiny && shinyIcon) ShinyIcon(icon, Modifier.align(Alignment.TopStart))
         if (lucky) LuckyIcon(icon, Modifier.align(Alignment.TopEnd))
+        // El Gigamax ya implica Dinamax: se muestra uno solo.
+        if (gigamaxIcon) GigamaxIcon(icon, Modifier.align(Alignment.BottomEnd))
+        else if (dynamaxIcon) DynamaxIcon(icon, Modifier.align(Alignment.BottomEnd))
     }
 }
 
@@ -240,29 +250,18 @@ fun RankValue(value: Double, best: Double, text: String, width: Dp = 68.dp, tier
 /** "49.2 (93%)": valor con su porcentaje respecto del #1. */
 fun pctOfTop(value: Double, top: Double) = if (top > 0) " (${(value / top * 100).toInt()}% del #1)" else ""
 
-/** Nombre para mostrar: la forma "Shadow" ya se indica con la etiqueta OSCURO. */
+/** Nombre para mostrar: lo de "Shadow" ya lo indica la llamita del sprite. */
 val Species.displayName: String get() = name.replace(" (Shadow)", "")
-
-/** Etiquetas de la especie: SOMBRA, MEGA, legendario, Dinamax… */
-@Composable
-fun SpeciesTags(s: Species, gmax: Boolean = false, dynamax: Boolean = false) {
-    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-        if (s.shadow) Tag("OSCURO", Pal.Shadow)
-        if (s.mega) Tag("MEGA", Pal.Blue)
-        // Charizard, Pikachu, Eevee… tienen las dos: Dinamax común y Gigamax.
-        if (dynamax) Tag("DMAX", Pal.Dynamax)
-        if (gmax) Tag("G-MAX", Pal.Dynamax)
-    }
-}
 
 /** Nombre de un movimiento; LEGADO = solo se enseña con MT Élite (legado / día de la comunidad / evento). */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun MoveLabel(move: Move, species: Species, size: Int = 13) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(Pal.type(move.type), SmallPixelShape))
-        Spacer(Modifier.width(3.dp))
-        GbaText(move.name, size = size.sp, maxLines = 1)
-        if (species.isElite(move.id)) { Spacer(Modifier.width(3.dp)); Tag("LEGADO", Pal.Red) }
+    // Si no entra en un renglón, la etiqueta LEGADO (y el nombre largo) bajan: nunca se cortan con "…".
+    FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Box(Modifier.align(Alignment.CenterVertically).padding(end = 3.dp).size(8.dp).background(Pal.type(move.type), SmallPixelShape))
+        GbaText(move.name, size = size.sp, modifier = Modifier.align(Alignment.CenterVertically).padding(end = 3.dp))
+        if (species.isElite(move.id)) Box(Modifier.align(Alignment.CenterVertically)) { Tag("LEGADO", Pal.Red) }
     }
 }
 
@@ -276,6 +275,8 @@ fun RankRow(
     gmax: Boolean = false,
     dynamax: Boolean = false,
     shadowTint: Boolean = species.shadow,
+    /** El Pokémon que se vino a buscar (desde su Pokédex): marco del color del cursor. */
+    highlight: Boolean = false,
     trailing: @Composable () -> Unit = {},
     body: @Composable () -> Unit = {},
 ) {
@@ -283,18 +284,18 @@ fun RankRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 3.dp)
+            .let { if (highlight) it.border(3.dp, Pal.Cursor, com.esmeraldago.app.ui.theme.PixelShape) else it }
             .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         padding = 6.dp,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             GbaText(if (rank > 0) "#$rank" else "", size = 14.sp, modifier = Modifier.width(38.dp), color = Pal.Muted)
-            Sprite(species, 52.dp, shadowTint)
+            Sprite(species, 52.dp, shadowTint, dynamaxIcon = dynamax, gigamaxIcon = gmax)
             Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
                 GbaText(title, size = 15.sp, maxLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                     species.types.forEach { TypeBadge(it, small = true) }
-                    SpeciesTags(species, gmax, dynamax)
                 }
                 body()
             }

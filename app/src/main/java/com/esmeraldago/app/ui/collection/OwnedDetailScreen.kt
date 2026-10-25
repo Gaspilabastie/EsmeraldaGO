@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esmeraldago.app.ui.common.LocalContainer
 import com.esmeraldago.app.ui.common.MoveLabel
-import com.esmeraldago.app.ui.common.SpeciesTags
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.WithGame
 import com.esmeraldago.app.ui.common.dexLabel
@@ -112,8 +111,6 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                             GbaText("PC ${p.cp}   Nv ${fmtLevel(p.level)}", size = 18.sp)
                             p.hp?.let { GbaText("PS $it", size = 14.sp, color = Pal.Muted) }
                             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { s.types.forEach { TypeBadge(it, small = true) } }
-                            Spacer(Modifier.height(2.dp))
-                            SpeciesTags(s, gmax = p.gigantamax, dynamax = p.dynamax)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 if (p.shiny) GbaText("Shiny", size = 12.sp, color = Pal.Gold)
                                 if (p.lucky) GbaText("Con suerte", size = 12.sp, color = Pal.Gold)

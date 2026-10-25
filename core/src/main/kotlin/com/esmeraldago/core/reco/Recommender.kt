@@ -491,7 +491,8 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
             .distinctBy { it.id } + (if (boss.mega) listOf(boss) else emptyList())
         data class H(val text: String, val weight: Int)
         val out = mutableListOf<H>()
-        fun who(s: Species) = if (s.id == caught.id) "" else " (como ${s.name})"
+        // El propio jefe (o lo que se atrapa de él) no necesita aclaración: "(como Charizard (Mega X))" sobraba.
+        fun who(s: Species) = if (s.id == caught.id || s.id == boss.id) "" else " (como ${s.name})"
         for (s in family) {
             for (type in Types.ALL) {
                 val rank = topAttackers(type).distinctBy { it.species.id }.indexOfFirst { it.species.id == s.id } + 1

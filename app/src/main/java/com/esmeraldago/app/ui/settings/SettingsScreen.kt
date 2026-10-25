@@ -57,6 +57,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         TitleBar("Opciones", onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             AppUpdateBox()
+            BackupBox()
 
             LiveScanBox()
 
@@ -155,13 +156,20 @@ fun SettingsScreen(onBack: () -> Unit) {
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun AppUpdateBox() {
-    val updates = LocalContainer.current.updates
+    val container = LocalContainer.current
+    val updates = container.updates
     val state by updates.state.collectAsState()
+    val settings by container.settings.state.collectAsState()
     val uriHandler = LocalUriHandler.current
+    com.esmeraldago.app.ui.home.AskNotificationsWhileUpdating(state)
 
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Versión de la app")
         Labeled("Instalada", updates.currentVersion)
+        updates.installedNotes?.takeIf { it.isNotBlank() }?.let {
+            GbaText("Novedades de esta versión", size = 13.sp, modifier = Modifier.padding(top = 4.dp))
+            GbaText(it, size = 12.sp, color = Pal.Muted)
+        }
         when (val s = state) {
             UpdateState.Idle -> {}
             UpdateState.Checking -> GbaText("Buscando…", size = 13.sp)
@@ -185,11 +193,49 @@ private fun AppUpdateBox() {
             }
             PixelButton("HISTORIAL", { uriHandler.openUri(updates.repoUrl) }, color = Pal.Muted)
         }
+        ToggleChip("Actualizar sola con Wi-Fi", settings.autoUpdate, { v -> container.settings.update { it.copy(autoUpdate = v) } },
+            Modifier.padding(top = 6.dp))
         GbaText(
-            "Se instala encima de la actual, así que no perdés tu colección. La primera vez Android te pide " +
-                "permitir que EsmeraldaGO instale apps.",
+            "Se instala encima de la actual: no perdés tu colección. La primera vez Android pide permitir que " +
+                "EsmeraldaGO instale apps y confirmar; después se actualiza sin preguntar.",
             size = 11.sp, color = Pal.Muted,
         )
+    }
+}
+
+/**
+ * Copia de la caja en un archivo (Drive, Descargas…): para pasarla a otro teléfono o no perderla si hubiera que
+ * reinstalar. Android además hace su copia automática en la cuenta de Google si está activada.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun BackupBox() {
+    val container = LocalContainer.current
+    val owned by container.collection.items.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching { context.contentResolver.openOutputStream(uri)!!.use { it.write(container.collection.exportJson().toByteArray()) } }
+            .onSuccess { container.notify("Copia guardada: ${owned.size} Pokémon.") }
+            .onFailure { container.notify("No se pudo guardar la copia: ${it.message}") }
+    }
+    val load = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching { container.collection.importJson(context.contentResolver.openInputStream(uri)!!.use { it.reader().readText() }) }
+            .onSuccess { n -> container.notify(if (n == 0) "Esa copia no tenía Pokémon nuevos." else "Se sumaron $n Pokémon de la copia.") }
+            .onFailure { container.notify("Ese archivo no es una copia de EsmeraldaGO.") }
+    }
+    WindowBox(Modifier.fillMaxWidth()) {
+        SectionTitle("Copia de seguridad")
+        GbaText("Guardá tu caja en un archivo para no perderla o pasarla a otro teléfono.", size = 12.sp, color = Pal.Muted)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+            PixelButton("GUARDAR COPIA", { save.launch("esmeraldago-caja.json") }, enabled = owned.isNotEmpty())
+            PixelButton("CARGAR COPIA", { load.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, color = Pal.Muted)
+        }
     }
 }
 

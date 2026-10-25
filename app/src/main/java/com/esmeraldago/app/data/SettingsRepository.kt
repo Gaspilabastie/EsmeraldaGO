@@ -20,6 +20,8 @@ data class Settings(
     val showUnreleased: Boolean = false,
     /** Escaneo en vivo: bajar solo la ficha para leer los ataques (necesita el servicio de accesibilidad). */
     val autoScroll: Boolean = true,
+    /** Con Wi-Fi, bajar e instalar las versiones nuevas solo, desde la pantalla de inicio. */
+    val autoUpdate: Boolean = true,
 ) {
     /** Nivel máximo que puede tener un Pokémon tuyo: entrenador + 10, tope 51 (Mejor Compañero). */
     val pokemonLevelCap: Double get() = if (trainerLevel <= 0) 51.0 else minOf(51.0, trainerLevel + 10.0)
@@ -36,6 +38,7 @@ class SettingsRepository(context: Context) {
             trainerLevel = prefs.getInt("trainerLevel", 0),
             showUnreleased = prefs.getBoolean("showUnreleased", false),
             autoScroll = prefs.getBoolean("autoScroll", true),
+            autoUpdate = prefs.getBoolean("autoUpdate", true),
         )
     )
     val state: StateFlow<Settings> = _state.asStateFlow()
@@ -51,6 +54,7 @@ class SettingsRepository(context: Context) {
             .putInt("trainerLevel", s.trainerLevel)
             .putBoolean("showUnreleased", s.showUnreleased)
             .putBoolean("autoScroll", s.autoScroll)
+            .putBoolean("autoUpdate", s.autoUpdate)
             .apply()
     }
 }

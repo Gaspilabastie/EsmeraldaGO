@@ -81,16 +81,21 @@ class EmeraldTitleArt private constructor(
     companion object {
         const val SCREEN_W = 240
         const val SCREEN_H = 160
-        /** Cuadros (a 60 por segundo) de una ida y vuelta del paneo: unos 28 segundos. */
-        private const val PAN_FRAMES = 60 * 28
+        /** Cuadros (a 60 por segundo) de una ida y vuelta del paneo: unos 24 segundos. */
+        private const val PAN_FRAMES = 60 * 24
+        /** Centro de la cara de Rayquaza (los ojos están en x 116–139) y ancho que tiene que quedar siempre a la vista. */
+        private const val FACE_X = 128
+        private const val FACE_W = 48
 
         /**
-         * Columna (con fracción) donde empieza la vista en el cuadro [frame]: la cámara recorre la escena de lado
-         * a lado, suave (seno), empezando por el centro. Si la pantalla es más ancha que la escena, queda centrada.
+         * Columna (con fracción) donde empieza la vista en el cuadro [frame]: un vaivén leve alrededor de la cara,
+         * que nunca sale de cuadro. Si la pantalla es más ancha que la escena, queda centrada.
          */
         fun panX(vw: Int, frame: Int): Double {
-            val center = (SCREEN_W - vw) / 2.0
-            return if (vw >= SCREEN_W) center else center + center * sin(2 * PI * frame / PAN_FRAMES)
+            if (vw >= SCREEN_W) return (SCREEN_W - vw) / 2.0
+            val center = (FACE_X - vw / 2.0).coerceIn(0.0, (SCREEN_W - vw).toDouble())
+            val amp = minOf((vw - FACE_W) / 2.0, center, SCREEN_W - vw - center).coerceIn(0.0, 14.0)
+            return center + amp * sin(2 * PI * frame / PAN_FRAMES)
         }
         /**
          * Escala entera (píxeles reales por píxel GBA) y tamaño visible en píxeles GBA para un lienzo de [wPx]×[hPx].
@@ -227,7 +232,7 @@ class EmeraldTitleArt private constructor(
 
 /**
  * Fondo animado del título: la escena a todo el alto, en píxeles GBA enteros escalados sin suavizado, con un
- * paneo lento de lado a lado (Rayquaza enorme, como en la GBA, y se lo ve entero de a poco). Un cuadro del juego
+ * vaivén leve de lado a lado que siempre deja ver la cara (Rayquaza enorme, como en la GBA). Un cuadro del juego
  * por cuadro de pantalla: nubes y marcas van a su velocidad original.
  */
 @Composable

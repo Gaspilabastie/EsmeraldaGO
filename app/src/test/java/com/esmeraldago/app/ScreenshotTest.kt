@@ -85,7 +85,7 @@ class ScreenshotTest {
     }
 
     @Test
-    fun home() = shoot("01_home") { HomeScreen(onOpen = {}) }
+    fun home() = shoot("01_home", act = { repeat(20) { Thread.sleep(500); rule.waitForIdle() } }) { HomeScreen(onOpen = {}) }
 
     @Test
     fun rankings() = shoot("02_rankings_pve") { RankingsScreen(onBack = {}, onSpecies = {}) }

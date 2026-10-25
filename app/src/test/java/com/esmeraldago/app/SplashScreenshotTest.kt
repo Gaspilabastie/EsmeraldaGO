@@ -28,7 +28,12 @@ class SplashScreenshotTest {
     fun splash() {
         rule.setContent {
             CompositionLocalProvider(LocalAnimations provides false) {
-                EmeraldTheme { SplashScreen(ready = false, status = "Cargando datos del juego…", onDone = {}) }
+                EmeraldTheme {
+                    // Como en MainActivity: la pantalla de carga lee el estado de la actualización del contenedor.
+                    com.esmeraldago.app.ui.common.ProvideContainer(
+                        androidx.test.core.app.ApplicationProvider.getApplicationContext<EsmeraldaApp>().container,
+                    ) { SplashScreen(ready = false, status = "Cargando datos del juego…", onDone = {}) }
+                }
             }
         }
         // El fondo del título se baja de la red la primera vez: darle unos segundos.

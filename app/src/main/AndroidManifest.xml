@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Actualizar la app desde las releases de GitHub -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 13+: actualizarse a sí misma sin pedir confirmación (la app es quien instaló la versión actual) -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- Para poder abrir Pokémon GO desde la app (Android 11+ necesita declararlo) -->
     <queries>
@@ -67,6 +69,14 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/live_gesture_service" />
         </service>
+
+        <!-- Actualización desde la app: resultado de la instalación y aviso de "ya se actualizó" -->
+        <receiver android:name=".data.InstallStatusReceiver" android:exported="false" />
+        <receiver android:name=".data.UpdatedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

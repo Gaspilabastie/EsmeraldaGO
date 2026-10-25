@@ -94,12 +94,10 @@ fun CollectionScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onAdd: () -> 
                         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             // Oscuro / shiny / suerte / purificado se ven como íconos en el sprite.
                             if (s != null) Sprite(p, s, 60.dp)
-                            Row(Modifier.align(Alignment.BottomEnd)) {
-                                if (p.gigantamax) GbaText("G", size = 12.sp, color = Pal.Dynamax)
-                                else if (p.dynamax) GbaText("D", size = 12.sp, color = Pal.Dynamax)
-                            }
                         }
-                        GbaText(p.nickname ?: s?.displayName?.substringBefore(" (") ?: p.speciesId, size = 12.sp, maxLines = 1)
+                        // Apodos de hasta 12 letras: en dos renglones si hace falta, nunca cortados.
+                        GbaText(p.nickname ?: s?.displayName?.substringBefore(" (") ?: p.speciesId, size = 12.sp, maxLines = 2,
+                            align = androidx.compose.ui.text.style.TextAlign.Center)
                         GbaText("PC${p.cp}", size = 12.sp, maxLines = 1)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val color = when {
