@@ -85,7 +85,7 @@ private fun sameClass(s: Species, o: Species) =
 /**
  * Cómo rinde como atacante de un tipo: el puesto general y tier de RANKINGS (ranking completo), el puesto en su
  * clase ([sameClass]) y su mejor par de ataques. Se destaca si está entre los 10 primeros de su clase o en tier B
- * o mejor (≥75 % del #1 general).
+ * o mejor (≥70 % del #1 general).
  */
 private class PveRole(
     val type: String, val rank: Int, val classRank: Int, val tier: Tier, val pct: Int, val bestName: String,
@@ -212,7 +212,7 @@ private fun Header(s: Species, idx: GameIndex, shiny: Boolean, gmaxView: Boolean
             // Tocar el sprite (o el destello de la esquina) muestra el shiny.
             Box(Modifier.clickable(onClickLabel = "Ver shiny") { toggleShiny() }) {
                 Sprite(s, if (compact) 64.dp else 104.dp, shiny = shiny, shinyIcon = false, gmax = gmaxView,
-                    dynamaxIcon = s.dynamax, gigamaxIcon = s.gigantamax)
+                    dynamaxIcon = s.canDynamax, gigamaxIcon = s.gigantamax)
                 ShinyToggle(shiny, Modifier.align(Alignment.BottomEnd), small = compact)
             }
             Spacer(Modifier.width(10.dp))
@@ -590,13 +590,15 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, gmaxView: Boole
         }
     }
 
-    val dynamax = members.filter { it.dynamax || it.gigantamax }
+    val dynamax = members.filter { it.canDynamax || it.gigantamax }
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Dinamax")
         if (dynamax.isEmpty()) GbaText("Ningún Pokémon de esta familia puede Dinamaxizar.", size = 13.sp, color = Pal.Muted)
         else {
             CenteredCells { dynamax.forEach { cell(it) } }
         }
+        if (members.any { it.maxWithoutDynamax })
+            GbaText("La forma Coronada entra a los combates Max sin Dinamaxizar.", size = 13.sp, color = Pal.Muted)
     }
 
     val gmax = members.filter { it.gigantamax }

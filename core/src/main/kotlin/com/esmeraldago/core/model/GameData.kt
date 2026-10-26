@@ -71,6 +71,14 @@ data class Species(
      * la misma lista que prohíbe la Premier Cup. Megas y oscuros tienen su propio filtro.
      */
     val nonBudget: Boolean get() = legendary || mythical || ultraBeast
+
+    /**
+     * Zacian y Zamazenta Coronados entran a los combates Max sin poder Dinamaxizar (anuncio oficial de GO,
+     * 2025): cuentan para los rankings Max pero no llevan la marca Dinamax. Las formas Héroe no participan.
+     */
+    val maxWithoutDynamax: Boolean get() = id == "zacian_crowned_sword" || id == "zamazenta_crowned_shield"
+    /** Puede Dinamaxizar (la marca roja); [dynamax] además incluye a quienes solo entran a combates Max. */
+    val canDynamax: Boolean get() = dynamax && !maxWithoutDynamax
 }
 
 @Serializable

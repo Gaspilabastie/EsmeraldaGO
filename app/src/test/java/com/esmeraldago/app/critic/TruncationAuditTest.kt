@@ -58,7 +58,8 @@ class TruncationAuditTest {
         repeat(4) { Thread.sleep(250); rule.waitForIdle() }
         val deadline = System.currentTimeMillis() + 90_000
         while (System.currentTimeMillis() < deadline &&
-            rule.onAllNodesWithText("Calculando", substring = true).fetchSemanticsNodes().isNotEmpty()
+            (rule.onAllNodesWithText("Calculando", substring = true).fetchSemanticsNodes().isNotEmpty() ||
+                rule.onAllNodesWithText("Consultando", substring = true).fetchSemanticsNodes().isNotEmpty())
         ) { Thread.sleep(300); rule.waitForIdle() }
         repeat(2) { Thread.sleep(250); rule.waitForIdle() }
     }
@@ -157,5 +158,7 @@ class TruncationAuditTest {
             show { com.esmeraldago.app.ui.collection.OwnedDetailScreen(p.uid, onBack = {}, onEdit = {}) }; record("caja/${p.speciesId}")
         }
         show { com.esmeraldago.app.ui.settings.SettingsScreen(onBack = {}) }; record("opciones")
+        show { com.esmeraldago.app.ui.guide.GuideScreen(onBack = {}) }; record("guía")
+        com.esmeraldago.app.ui.guide.GUIDE.forEach { e -> click(e.title); record("guía/${e.title}") }
     }
 }

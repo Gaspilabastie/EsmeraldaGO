@@ -73,7 +73,8 @@ private val MORE = listOf(
     Shortcut("DINAMAX", "max", "dynamax-band"),
     Shortcut("EQUIPOS", "teams", "vs-recorder"),
     Shortcut("QUÉ ATRAPAR", "advice", "razz-berry"),
-    Shortcut("OPCIONES", "settings", "pal-pad"),
+    // Opciones ya está arriba a la derecha (Pokénav); su lugar lo ocupa la Guía (Teachy TV, la "guía" de Rojo Fuego).
+    Shortcut("GUÍA", "guide", "teachy-tv"),
 )
 
 /**

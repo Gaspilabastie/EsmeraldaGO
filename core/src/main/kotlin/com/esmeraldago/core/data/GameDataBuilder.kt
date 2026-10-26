@@ -70,6 +70,18 @@ class GameDataBuilder {
         return if (fast) miners.pveMoves["${key}_FAST"] ?: miners.pveMoves[key] else miners.pveMoves[key]
     }
 
+    /**
+     * Ataques que el texto en español del juego todavía no trae (el APK llega hasta move_name_0487).
+     * Nombres oficiales de la saga principal en España, que es la traducción que usa GO (WikiDex, 2026-10).
+     */
+    private val MOVE_NAMES_ES = mapOf(
+        "BEAK_BLAST" to "Pico Cañón", "CHILLING_WATER" to "Agua Fría", "DIVE" to "Buceo",
+        "DRUM_BEATING" to "Batería Asalto", "GIGATON_HAMMER" to "Martillo Colosal", "GLAIVE_RUSH" to "Asalto Espadón",
+        "GULP_MISSILE" to "Tragamisil", "MIND_BLOWN" to "Cabeza Sorpresa", "PLASMA_FISTS" to "Puños Plasma",
+        "PYRO_BALL" to "Balón Ígneo", "SECRET_SWORD" to "Sable Místico", "SNIPE_SHOT" to "Disparo Certero",
+        "SPRINGTIDE_STORM" to "Ciclón Primavera",
+    )
+
     private fun moveNumber(id: String, fast: Boolean, miners: MinersData): Int? {
         val key = minersKey(id)
         return (if (fast) miners.moveNumbers["${key}_FAST"] else null) ?: miners.moveNumbers[key]
@@ -227,7 +239,10 @@ class GameDataBuilder {
             pvpTurns = turns,
             // Las variantes "_PLUS" de PvPoke son el mismo ataque con otra potencia: mismo nombre en el juego.
             nameEs = (moveNumber(id, fast, miners) ?: moveNumber(id.removeSuffix("_PLUS"), fast, miners))
-                ?.let { spanish["move_name_%04d".format(it)] },
+                ?.let { spanish["move_name_%04d".format(it)] }
+                // Variantes de forma de Aegislash: mismo ataque, mismo nombre.
+                ?: id.removePrefix("AEGISLASH_CHARGE_").takeIf { it != id }?.let { base -> moveNumber(base, fast, miners)?.let { spanish["move_name_%04d".format(it)] } }
+                ?: MOVE_NAMES_ES[id.substringBefore("_ARROKUDA").substringBefore("_PIKACHU")],
         )
     }
 

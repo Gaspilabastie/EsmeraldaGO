@@ -103,6 +103,7 @@ object Pal {
     val Blue = Color(0xFF3868C8)
     val Shadow = Color(0xFF7848A8)
     val Gold = Color(0xFFE8B030)
+    val Orange = Color(0xFFE07828)
     val Dynamax = Color(0xFFE02868)
 
     val TYPE = mapOf(

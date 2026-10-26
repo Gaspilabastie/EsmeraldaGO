@@ -37,6 +37,7 @@ import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.WithGame
 import com.esmeraldago.app.ui.common.displayName
 import com.esmeraldago.app.ui.common.fmt1
+import com.esmeraldago.app.ui.common.fmt2
 import com.esmeraldago.app.ui.common.fmtLevel
 import com.esmeraldago.app.ui.common.rememberComputed
 import com.esmeraldago.app.ui.theme.DialogBox
@@ -55,7 +56,10 @@ import com.esmeraldago.app.ui.theme.WindowBox
 import com.esmeraldago.core.calc.PveCalc
 import com.esmeraldago.core.calc.PveResult
 import com.esmeraldago.core.calc.RaidTier
+import com.esmeraldago.core.data.PbCounter
+import com.esmeraldago.core.data.Pokebattler
 import com.esmeraldago.core.model.Types
+import androidx.compose.runtime.produceState
 
 @Composable
 fun RaidsScreen(onBack: () -> Unit, onBoss: (String, String) -> Unit) {
@@ -178,15 +182,46 @@ fun CountersScreen(bossId: String, tierName: String, onBack: () -> Unit, onSpeci
                     }
                 }
             } else {
-                val (counters, busy) = rememberComputed(boss.id, tier, shadow, mega, elite, settings.rankLevel) {
-                    PveCalc.counters(boss, tier, idx, settings.rankLevel, shadow, mega, elite, limit = 40)
+                // Lo reportado por Pokébattler (simulación de la incursión entera); si no responde, el cálculo propio.
+                val level = settings.rankLevel.toInt()
+                val pb by produceState<Result<List<PbCounter>>?>(null, boss.id, tier, level) {
+                    value = container.pokebattler.counters(boss, tier, level)
                 }
-                val list = counters ?: return@WithGame LoadingBox()
-                val top = list.firstOrNull()?.score ?: 1.0
-                if (busy) GbaText("Recalculando…", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp))
-                LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(list, key = { _, r -> "${r.species.id}|${r.fast.id}|${r.charged.id}" }) { i, r ->
-                        CounterRow(i + 1, r, top, onSpecies, topDps = list.first().dps, extra = "Nv ${fmtLevel(r.level)} 15/15/15")
+                val result = pb ?: return@WithGame LoadingBox("Consultando Pokébattler")
+                val reported = result.getOrNull()?.let { Pokebattler.resolveAll(it, idx) }
+                    ?.filter { (shadow || !it.species.shadow) && (mega || !it.species.mega) &&
+                        (elite || !(it.species.isElite(it.fast.id) || it.species.isElite(it.charged.id))) }
+                if (reported != null) {
+                    val best = reported.firstOrNull()?.estimator ?: 1.0
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        itemsIndexed(reported, key = { _, r -> "${r.species.id}|${r.fast.id}|${r.charged.id}" }) { i, r ->
+                            RankRow(i + 1, r.species, onClick = { onSpecies(r.species.id) }, trailing = {
+                                com.esmeraldago.app.ui.common.RankValue(r.estimator, best, fmt2(r.estimator), higherIsBetter = false)
+                            }) {
+                                Column {
+                                    MoveLabel(r.fast, r.species)
+                                    MoveLabel(r.charged, r.species)
+                                }
+                            }
+                        }
+                        item {
+                            GbaText("Entrenadores necesarios con equipos de ese Pokémon, nivel $level, sin clima. Datos: Pokébattler.",
+                                size = 11.sp, color = Pal.Muted, modifier = Modifier.padding(10.dp))
+                        }
+                    }
+                } else {
+                    val (counters, busy) = rememberComputed(boss.id, tier, shadow, mega, elite, settings.rankLevel) {
+                        PveCalc.counters(boss, tier, idx, settings.rankLevel, shadow, mega, elite, limit = 40)
+                    }
+                    val list = counters ?: return@WithGame LoadingBox()
+                    val top = list.firstOrNull()?.score ?: 1.0
+                    GbaText("Pokébattler no respondió: cálculo propio.", size = 12.sp, color = Pal.Muted,
+                        modifier = Modifier.padding(horizontal = 10.dp))
+                    if (busy) GbaText("Recalculando…", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp))
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        itemsIndexed(list, key = { _, r -> "${r.species.id}|${r.fast.id}|${r.charged.id}" }) { i, r ->
+                            CounterRow(i + 1, r, top, onSpecies, topDps = list.first().dps, extra = "Nv ${fmtLevel(r.level)} 15/15/15")
+                        }
                     }
                 }
             }

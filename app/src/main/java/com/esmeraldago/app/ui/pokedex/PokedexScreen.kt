@@ -114,9 +114,9 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                             Column(Modifier.width(52.dp)) {
                                 GbaText(dexLabel(s.dex), size = 12.sp, color = Pal.Muted)
                                 // Poké Ball de "atrapado", como en la Pokédex de Esmeralda.
-                                if (s.baseId in ownedIds) GbaText("●", size = 14.sp, color = Pal.Red)
+                                if (s.baseId in ownedIds) GbaText("●", size = 14.sp, color = Pal.Good)
                             }
-                            Sprite(s, 52.dp, gmax = gmax, dynamaxIcon = s.dynamax, gigamaxIcon = s.gigantamax)
+                            Sprite(s, 52.dp, gmax = gmax, dynamaxIcon = s.canDynamax, gigamaxIcon = s.gigantamax)
                             Spacer(Modifier.width(6.dp))
                             Column(Modifier.weight(1f)) {
                                 GbaText(s.displayName + if (gmax) " (Gigamax)" else "", size = 15.sp, maxLines = 2)

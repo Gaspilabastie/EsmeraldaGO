@@ -222,14 +222,12 @@ fun SpriteUrl(url: String, size: Dp, description: String) {
     )
 }
 
-/** Insignia de tier (S, A+, A…), con colores que bajan de "caliente" a "frío". */
+/** Insignia de tier (S, A…), de dorado a frío; sin rojo, que queda para errores. */
 @Composable
 fun TierBadge(tier: com.esmeraldago.core.calc.Tier) {
     val color = when (tier) {
-        com.esmeraldago.core.calc.Tier.S -> Color(0xFFE03848)
-        com.esmeraldago.core.calc.Tier.A_PLUS -> Color(0xFFF07830)
-        com.esmeraldago.core.calc.Tier.A -> Color(0xFFE8B030)
-        com.esmeraldago.core.calc.Tier.B_PLUS -> Color(0xFF58B850)
+        com.esmeraldago.core.calc.Tier.S -> Color(0xFFE8B030)
+        com.esmeraldago.core.calc.Tier.A -> Color(0xFF58B850)
         com.esmeraldago.core.calc.Tier.B -> Color(0xFF38A8A0)
         com.esmeraldago.core.calc.Tier.C -> Color(0xFF5878C8)
         com.esmeraldago.core.calc.Tier.D -> Color(0xFF888888)
@@ -267,7 +265,7 @@ fun MoveLabel(move: Move, species: Species, size: Int = 13) {
     FlowRow(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Box(Modifier.align(Alignment.CenterVertically).padding(end = 3.dp).size(8.dp).background(Pal.type(move.type), SmallPixelShape))
         GbaText(move.name, size = size.sp, modifier = Modifier.align(Alignment.CenterVertically).padding(end = 3.dp))
-        if (species.isElite(move.id)) Box(Modifier.align(Alignment.CenterVertically)) { Tag("LEGADO", Pal.Red) }
+        if (species.isElite(move.id)) Box(Modifier.align(Alignment.CenterVertically)) { Tag("LEGADO", Pal.Warn) }
     }
 }
 
@@ -399,3 +397,4 @@ fun dexLabel(dex: Int) = "No.%03d".format(dex)
 fun fmtLevel(l: Double) = Recommender.fmt(l)
 fun fmtNum(n: Int) = "%,d".format(n).replace(',', '.')
 fun fmt1(d: Double) = "%.1f".format(d)
+fun fmt2(d: Double) = "%.2f".format(d)

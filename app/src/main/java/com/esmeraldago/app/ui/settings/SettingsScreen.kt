@@ -105,6 +105,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     "• Rankings PvP y movesets: PvPoke (licencia MIT)\n" +
                         "• Game Master: PokeMiners\n" +
                         "• Incursiones y eventos: LeekDuck vía ScrapedDuck\n" +
+                        "• Counters de incursión: Pokébattler\n" +
                         "• Sprites: PokeAPI (Pokémon Esmeralda / Negro y Blanco)\n" +
                         "• Fuente: Galmuri11 de Lee Minseo (OFL)\n" +
                         "• Fórmula PvE: DPS/TDO \"comprehensive\" de GamePress\n\n" +

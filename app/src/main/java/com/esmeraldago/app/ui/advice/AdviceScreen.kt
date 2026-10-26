@@ -114,7 +114,7 @@ fun AdviceScreen(onBack: () -> Unit, onOwned: (String) -> Unit, onSpecies: (Stri
 @Composable
 private fun AdviceCard(a: Advice, onClick: () -> Unit) {
     val color = when (a.kind) {
-        AdviceKind.PVE -> Pal.Red
+        AdviceKind.PVE -> Pal.Orange
         AdviceKind.PVP -> Pal.Blue
         AdviceKind.MAX -> Pal.Dynamax
         AdviceKind.EVOLVE -> Pal.Header

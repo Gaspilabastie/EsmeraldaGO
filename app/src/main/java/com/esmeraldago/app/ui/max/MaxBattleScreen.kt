@@ -76,7 +76,7 @@ fun MaxBattleScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                 Spacer(Modifier.height(6.dp))
                 PixelButton(if (boss == null) "ELEGIR JEFE" else "CAMBIAR JEFE", { picking = true }, color = Pal.Dynamax)
             }
-            if (picking) SpeciesPickerDialog(idx, "Jefe Dinamax", filter = { (it.dynamax || it.gigantamax) && !it.shadow && !it.mega },
+            if (picking) SpeciesPickerDialog(idx, "Jefe Dinamax", filter = { (it.canDynamax || it.gigantamax) && !it.shadow && !it.mega },
                 onDismiss = { picking = false }) { bossId = it.id; picking = false }
             if (boss == null) return@WithGame
 

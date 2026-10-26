@@ -203,6 +203,7 @@ private fun AppNav() {
                 onScan = { nav.navigate("scan") })
         }
         composable("settings") { SettingsScreen(back) }
+        composable("guide") { com.esmeraldago.app.ui.guide.GuideScreen(back) }
         composable("types") { com.esmeraldago.app.ui.types.TypesScreen(back) }
     }
 }
