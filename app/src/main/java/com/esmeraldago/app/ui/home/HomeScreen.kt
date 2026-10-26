@@ -281,7 +281,8 @@ private fun EventsCard(idx: GameIndex, reco: Recommender, onOpen: (String) -> Un
             .filter { it.type in EVENT_PRIORITY && (it.end == null || it.end.isAfter(now)) && (it.start == null || it.start.isBefore(now.plus(10, ChronoUnit.DAYS))) }
             .map { e ->
                 val species = (e.featured.mapNotNull { idx.findByName(it) }.ifEmpty { speciesInName(e.name, idx) }).distinctBy { it.id }
-                val reason = species.firstNotNullOfOrNull { s -> reco.raidHighlights(s, 1).firstOrNull()?.let { "${s.displayName}: $it" } }
+                // Sin el nombre: el sprite ya muestra de qué Pokémon se trata.
+                val reason = species.firstNotNullOfOrNull { s -> reco.raidHighlights(s, 1).firstOrNull() }
                 EventView(e, species, reason, e.type == "community-day" || e.type == "pokemon-go-tour" || reason != null)
             }
             .let { all ->
@@ -290,18 +291,23 @@ private fun EventsCard(idx: GameIndex, reco: Recommender, onOpen: (String) -> Un
                 all.filter { v ->
                     if (v.event.type != "raid-hour") return@filter true
                     val host = battles.firstOrNull { b -> b.species.any { s -> v.species.any { it.id == s.id } } } ?: return@filter true
-                    host.extras += "Hora de incursiones: ${whenText(v.event)}"
+                    host.extras += "Hora de incursiones: " + (v.event.start?.let { DAY.format(it.atZone(ZoneId.systemDefault())) + " " } ?: "") + timeText(v.event)
                     false
                 }
             }
             .sortedWith(compareBy<EventView>({ !it.important }, { EVENT_PRIORITY.indexOf(it.event.type) }, { it.event.start }))
-            .take(4)
+            .take(6)
+            // Por día: primero lo que está en curso, después cada fecha en orden; dentro de cada día, lo importante primero.
+            .sortedWith(compareBy<EventView>({ dayKey(it.event) }, { !it.important }, { it.event.start }))
     }
     val list = views ?: return
     if (list.isEmpty()) return
     WindowBox(Modifier.fillMaxWidth()) {
         CardTitle("EVENTOS", "journal", null)
-        list.forEach { v -> EventRow(v) { v.species.firstOrNull()?.let { onOpen("species/${it.id}") } ?: v.event.link.takeIf { it.isNotBlank() }?.let(uriHandler::openUri) } }
+        list.groupBy { dayKey(it.event) }.forEach { (key, day) ->
+            GbaText(dayLabel(day.first().event, key), size = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            day.forEach { v -> EventRow(v) { v.species.firstOrNull()?.let { onOpen("species/${it.id}") } ?: v.event.link.takeIf { it.isNotBlank() }?.let(uriHandler::openUri) } }
+        }
         // Salvajes destacados: lo que el Día de la Comunidad o la Hora destacada hace aparecer y rinde.
         val wild = list.filter { it.event.type == "community-day" || it.event.type == "pokemon-spotlight-hour" }
             .flatMap { it.species }.distinctBy { it.id }
@@ -328,7 +334,7 @@ private fun EventRow(v: EventView, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(6.dp))
         Column(Modifier.weight(1f)) {
-            GbaText((if (v.important) "★ " else "") + headingEs(v.event) + " · " + whenText(v.event), size = 12.sp,
+            GbaText((if (v.important) "★ " else "") + headingEs(v.event) + " · " + timeText(v.event), size = 12.sp,
                 color = if (v.important) Pal.Good else Pal.Muted)
             GbaText(v.event.name, size = 13.sp, maxLines = 2)
             v.extras.forEach { GbaText(it, size = 11.sp, color = Pal.Good, maxLines = 2) }
@@ -373,3 +379,30 @@ private fun CardTitle(text: String, item: String, onClick: (() -> Unit)?) {
     }
 }
 
+/** Grupo del evento: 0 = en curso; si no, los días desde hoy hasta que empieza (1 = hoy, 2 = mañana…). */
+private fun dayKey(e: GoEvent): Long {
+    val zone = ZoneId.systemDefault()
+    val start = e.start ?: return 0
+    if (!start.isAfter(Instant.now())) return 0
+    return ChronoUnit.DAYS.between(Instant.now().atZone(zone).toLocalDate(), start.atZone(zone).toLocalDate()) + 1
+}
+
+/** Encabezado del día: "EN CURSO", "HOY", "MAÑANA", "SÁB 31/10". */
+private fun dayLabel(e: GoEvent, key: Long): String = when (key) {
+    0L -> "EN CURSO"; 1L -> "HOY"; 2L -> "MAÑANA"
+    else -> DAY.format(e.start!!.atZone(ZoneId.systemDefault())).uppercase()
+}
+
+/** La hora, ya que el día va en el encabezado: "hasta 17:00", "hasta mar 27/10", "14:00–17:00". */
+private fun timeText(e: GoEvent): String {
+    val zone = ZoneId.systemDefault()
+    val start = e.start ?: return ""
+    val end = e.end
+    if (!start.isAfter(Instant.now())) return whenText(e)
+    val s = start.atZone(zone)
+    return when {
+        end == null -> HOUR.format(s)
+        Duration.between(start, end).toHours() < 24 -> "${HOUR.format(s)}–${HOUR.format(end.atZone(zone))}"
+        else -> "${HOUR.format(s)} · hasta ${DAY.format(end.atZone(zone))}"
+    }
+}

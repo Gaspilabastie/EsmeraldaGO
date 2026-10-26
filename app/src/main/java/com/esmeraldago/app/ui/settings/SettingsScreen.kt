@@ -108,7 +108,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                         "• Sprites: PokeAPI (Pokémon Esmeralda / Negro y Blanco)\n" +
                         "• Fuente: Galmuri11 de Lee Minseo (OFL)\n" +
                         "• Fórmula PvE: DPS/TDO \"comprehensive\" de GamePress\n\n" +
-                        "App personal, no afiliada a Niantic, Nintendo ni The Pokémon Company.",
+                        "App personal, no afiliada a Niantic, Nintendo ni The Pokémon Company. " +
+                        "Automatizar acciones en el juego va contra los términos de Niantic.",
                     size = 12.sp,
                 )
             }
@@ -251,18 +252,13 @@ private fun LiveScanBox() {
     }
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Escaneo en vivo")
-        Labeled("Accesibilidad", if (enabled) "Activa" else "Inactiva")
-        // Un solo control: Android no deja que una app active su servicio de accesibilidad; se hace en Ajustes.
-        GbaText(
-            "Permite bajar la ficha para leer los ataques y ocultar la burbuja fuera de Pokémon GO. Se activa en " +
-                "Ajustes › Accesibilidad › EsmeraldaGO. Automatizar acciones en el juego va contra los términos de Niantic.",
-            size = 12.sp, color = Pal.Muted,
-        )
+        GbaText("Baja la ficha para leer los ataques, abre la valoración y oculta la burbuja fuera de Pokémon GO.",
+            size = 12.sp, color = Pal.Muted)
+        // Android no deja que una app active su propio servicio de accesibilidad: la primera vez se abre su página en
+        // Ajustes; ya activado, se prende y apaga acá mismo.
         Row(Modifier.padding(top = 6.dp)) {
-            PixelButton(if (enabled) "DESACTIVAR" else "ACTIVAR", {
-                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-            })
+            if (!enabled) PixelButton("ACTIVAR", { openAccessibilityPage(context) })
+            else ToggleChip("Escaneo asistido", settings.autoScroll, { v -> container.settings.update { it.copy(autoScroll = v) } })
         }
     }
 }
@@ -271,4 +267,19 @@ private fun LiveScanBox() {
 private fun ReleaseInfo(r: AppRelease) {
     GbaText("Nueva versión: ${r.version}", size = 14.sp, color = Pal.HeaderDark)
     if (r.notes.isNotBlank()) GbaText(r.notes, size = 12.sp)
+}
+
+/**
+ * Abre la página del servicio de accesibilidad de EsmeraldaGO en Ajustes (Android 13+ lo permite con su
+ * componente); si el sistema no la ofrece, la lista general de Accesibilidad.
+ */
+private fun openAccessibilityPage(context: android.content.Context) {
+    val component = android.content.ComponentName(context, LiveGestureService::class.java).flattenToString()
+    val details = android.content.Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+        .putExtra(android.content.Intent.EXTRA_COMPONENT_NAME, component)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(details) }.onFailure {
+        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 }

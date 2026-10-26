@@ -237,13 +237,19 @@ fun TierBadge(tier: com.esmeraldago.core.calc.Tier) {
     Tag(tier.label, color)
 }
 
-/** Columna derecha de un ranking: tier (relativo al #1), valor y barra relativa al #1. */
+/**
+ * Columna derecha de un ranking: el dato por el que se ordena, su % respecto del #1 y el tier de ese %.
+ * [higherIsBetter] = false para datos donde menos es mejor (el % es entonces mejor / valor).
+ */
 @Composable
-fun RankValue(value: Double, best: Double, text: String, width: Dp = 68.dp, tier: com.esmeraldago.core.calc.Tier? = null) {
+fun RankValue(value: Double, best: Double, text: String, width: Dp = 68.dp, tier: com.esmeraldago.core.calc.Tier? = null,
+              higherIsBetter: Boolean = true) {
+    val ratio = if (best <= 0 || value <= 0) 0.0 else if (higherIsBetter) value / best else best / value
     Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(width)) {
-        TierBadge(tier ?: com.esmeraldago.core.calc.Tier.of(value, best))
+        TierBadge(tier ?: com.esmeraldago.core.calc.Tier.of(ratio, 1.0))
         GbaText(text, size = 16.sp)
-        com.esmeraldago.app.ui.theme.HpBar((value / best).toFloat(), Modifier.fillMaxWidth(), height = 5.dp)
+        GbaText("${(ratio * 100).toInt()} %", size = 11.sp, color = Pal.Muted)
+        com.esmeraldago.app.ui.theme.HpBar(ratio.toFloat(), Modifier.fillMaxWidth(), height = 5.dp)
     }
 }
 

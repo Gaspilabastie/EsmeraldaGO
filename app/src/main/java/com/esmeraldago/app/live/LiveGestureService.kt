@@ -14,8 +14,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 /**
- * Servicio de accesibilidad (opcional) del escaneo en vivo. Hace dos cosas y nada más:
+ * Servicio de accesibilidad (opcional) del escaneo en vivo. Hace esto y nada más:
  * - desliza la ficha de Pokémon GO hacia abajo para leer los ataques y la vuelve a subir;
+ * - abre la valoración del Pokémon (toques en el menú y en el diálogo) para leer los IV exactos;
  * - avisa qué app está en primer plano, para ocultar la burbuja y pausar el modo continuo fuera del juego.
  * No lee el contenido de las ventanas (canRetrieveWindowContent = false en su configuración).
  */
@@ -55,6 +56,23 @@ class LiveGestureService : AccessibilityService() {
             if (!ok && cont.isActive) cont.resume(false)
         }
     }
+
+    /** Un toque en [x]/[y] (fracción del ancho y del alto). */
+    suspend fun tap(x: Float, y: Float): Boolean {
+        val m = resources.displayMetrics
+        val path = Path().apply { moveTo(m.widthPixels * x, m.heightPixels * y) }
+        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 60)).build()
+        return suspendCancellableCoroutine { cont ->
+            val ok = dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(g: GestureDescription?) { if (cont.isActive) cont.resume(true) }
+                override fun onCancelled(g: GestureDescription?) { if (cont.isActive) cont.resume(false) }
+            }, null)
+            if (!ok && cont.isActive) cont.resume(false)
+        }
+    }
+
+    /** El botón "atrás" del sistema. */
+    fun back(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
 
     companion object {
         const val POKEMON_GO = "com.nianticlabs.pokemongo"

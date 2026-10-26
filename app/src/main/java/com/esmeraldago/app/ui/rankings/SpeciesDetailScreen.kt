@@ -75,23 +75,39 @@ import com.esmeraldago.core.reco.Recommender
 private enum class Page(val label: String) { SUMMARY("INFO"), BATTLE("COMBATE"), FORMS("FORMAS") }
 
 /**
- * Cómo rinde como atacante de un tipo: el mismo puesto y tier que en RANKINGS (ranking completo, con oscuros, megas
- * y legado), y su mejor par de ataques. Se destaca si está entre los 30 primeros o en tier B o mejor (≥75 % del #1).
+ * "Su clase": los rivales de su misma categoría. Se dejan afuera las categorías más fuertes a las que no pertenece:
+ * las megas si no es mega, los oscuros si no es oscuro, y los legendarios, singulares y ultraentes si no lo es.
+ * (Es la idea de la referencia "Budget" de DialgaDex.) Un oscuro legendario compite contra todos menos las megas.
+ */
+private fun sameClass(s: Species, o: Species) =
+    (s.mega || !o.mega) && (s.shadow || s.mega || !o.shadow) && (s.nonBudget || !o.nonBudget)
+
+/**
+ * Cómo rinde como atacante de un tipo: el puesto general y tier de RANKINGS (ranking completo), el puesto en su
+ * clase ([sameClass]) y su mejor par de ataques. Se destaca si está entre los 10 primeros de su clase o en tier B
+ * o mejor (≥75 % del #1 general).
  */
 private class PveRole(
-    val type: String, val rank: Int, val tier: Tier, val pct: Int, val bestName: String,
+    val type: String, val rank: Int, val classRank: Int, val tier: Tier, val pct: Int, val bestName: String,
     val result: PveResult, val withoutElite: PveResult?,
 ) {
-    val relevant get() = rank <= 30 || tier.ordinal <= Tier.B.ordinal
+    val relevant get() = classRank <= 10 || tier.ordinal <= Tier.B.ordinal
 }
 
-/** Un movimiento Max: su puesto en el ranking Dinamax de su tipo y el mejor rápido para llenar la barra. */
-private class MaxRole(val moveName: String, val type: String, val gmax: Boolean, val damage: Double, val bestFast: Move, val rank: Int?, val tier: Tier?)
+/** Un movimiento Max: su puesto (general y en su clase) entre los atacantes Max de su tipo y el rápido que carga la barra. */
+private class MaxRole(
+    val moveName: String, val type: String, val gmax: Boolean, val damage: Double, val bestFast: Move,
+    val rank: Int?, val classRank: Int?, val tier: Tier?,
+)
+
+/** "#50" o "#50 · #12 en su clase" cuando el puesto en su clase es distinto. */
+private fun ranks(rank: Int?, classRank: Int?): String =
+    listOfNotNull(rank?.let { "#$it" }, classRank?.takeIf { it != rank }?.let { "#$it en su clase" }).joinToString(" · ")
 
 private class PvpIvs(val best: PokeMath.PvpIvResult?, val bestFloor10: PokeMath.PvpIvResult?)
 
 /** Puesto entre los tanques Dinamax (Def × PS), como en RANKINGS › Dinamax › Tanques. */
-private class TankRole(val rank: Int, val tier: Tier)
+private class TankRole(val rank: Int, val classRank: Int, val tier: Tier)
 
 private class EntryData(val pve: List<PveRole>, val max: List<MaxRole>, val tank: TankRole?)
 
@@ -158,7 +174,8 @@ private fun compute(s: Species, idx: GameIndex, level: Double, maxLevel: Int, pv
         if (i < 0) return@mapNotNull null
         val r = ranked[i]
         val top = full.first()
-        PveRole(type, i + 1, Tier.of(r.score, top.score), (r.score / top.score * 100).toInt(), top.species.displayName, r,
+        val classRank = ranked.filter { sameClass(s, it.species) }.indexOfFirst { it.species.id == s.id } + 1
+        PveRole(type, i + 1, classRank, Tier.of(r.score, top.score), (r.score / top.score * 100).toInt(), top.species.displayName, r,
             full.firstOrNull { it.species.id == s.id && !it.usesElite }.takeIf { r.usesElite })
     }.sortedBy { it.rank }
 
@@ -170,15 +187,17 @@ private fun compute(s: Species, idx: GameIndex, level: Double, maxLevel: Int, pv
             val best = g.maxBy { it.fastDps }
             val list = MaxCalc.topAttackers(best.maxMoveType, idx, level, maxLevel, limit = 200)
             val i = list.indexOfFirst { it.species.id == s.id && it.gigantamax == best.gigantamax }
+            val ci = list.filter { sameClass(s, it.species) }.indexOfFirst { it.species.id == s.id && it.gigantamax == best.gigantamax }
             MaxRole(best.maxMoveName, best.maxMoveType, best.gigantamax, best.maxDamage, best.fast,
-                (i + 1).takeIf { i >= 0 }, if (i >= 0) Tier.of(list[i].maxDamage, list.first().maxDamage) else null)
+                (i + 1).takeIf { i >= 0 }, (ci + 1).takeIf { ci >= 0 }, if (i >= 0) Tier.of(list[i].maxDamage, list.first().maxDamage) else null)
         }.sortedWith(compareBy(nullsLast()) { it.rank })
     }
 
     val tank = if ((!s.dynamax && !s.gigantamax) || s.shadow || s.mega) null else {
         val tanks = MaxCalc.topTanks(idx, level, limit = 400).distinctBy { it.species.id }
         val i = tanks.indexOfFirst { it.species.id == s.id }
-        if (i < 0) null else TankRole(i + 1, Tier.of(tanks[i].bulk, tanks.first().bulk))
+        val ci = tanks.filter { sameClass(s, it.species) }.indexOfFirst { it.species.id == s.id }
+        if (i < 0) null else TankRole(i + 1, ci + 1, Tier.of(tanks[i].bulk, tanks.first().bulk))
     }
     return EntryData(pve, max, tank)
 }
@@ -295,7 +314,7 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TierBadge(r.tier)
                             TypeBadge(r.type, small = true)
-                            GbaText("#${r.rank}", size = 13.sp)
+                            GbaText(ranks(r.rank, r.classRank), size = 13.sp, maxLines = 2)
                         }
                         GbaText(movesText(s, r.result.fast, r.result.charged), size = 12.sp, color = Pal.Muted)
                     }
@@ -309,7 +328,7 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
                 weak.forEach {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
                         modifier = Modifier.clickable(onClickLabel = "Ver en el ranking") { onRanking("pve:${it.type}:${s.id}") }) {
-                        TypeBadge(it.type, small = true); GbaText("#${it.rank}", size = 12.sp, color = Pal.Muted)
+                        TypeBadge(it.type, small = true); GbaText(ranks(it.rank, it.classRank), size = 12.sp, color = Pal.Muted)
                     }
                 }
             }
@@ -327,7 +346,8 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
                 RankingLink({ onRanking("pvp:${lg.name}:${s.id}") }) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         TierBadge(Tier.of(r.second.score, idx.pvpRanking(lg).firstOrNull()?.score ?: 0.0))
-                        GbaText("${lg.label.removePrefix("Liga ")} #${r.first} · ${fmt1(r.second.score)}", size = 13.sp, maxLines = 1)
+                        val classRank = idx.pvpRanking(lg).mapNotNull { idx[it.id] }.filter { sameClass(s, it) }.indexOfFirst { it.id == s.id } + 1
+                        GbaText("${lg.label.removePrefix("Liga ")} ${ranks(r.first, classRank.takeIf { it > 0 })}", size = 13.sp, maxLines = 2)
                     }
                     GbaText(r.second.moveset.mapNotNull { idx.move(it)?.name }.joinToString(" · "), size = 12.sp, color = Pal.Muted)
                 }
@@ -352,7 +372,7 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             m.tier?.let { TierBadge(it) }
                             TypeBadge(m.type, small = true)
-                            GbaText("Atacante · ${m.moveName}" + (m.rank?.let { " · #$it" } ?: ""), size = 13.sp, maxLines = 2)
+                            GbaText("Atacante · ${m.moveName}" + ranks(m.rank, m.classRank).let { if (it.isEmpty()) "" else " · $it" }, size = 13.sp, maxLines = 2)
                         }
                     }
                 }
@@ -360,7 +380,7 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
                     RankingLink({ onRanking("maxtank::${s.id}") }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TierBadge(t.tier)
-                            GbaText("Tanque · #${t.rank}", size = 13.sp)
+                            GbaText("Tanque · ${ranks(t.rank, t.classRank)}", size = 13.sp, maxLines = 2)
                         }
                     }
                 }

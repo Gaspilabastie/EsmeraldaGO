@@ -170,7 +170,6 @@ private fun PveTab(
                 Column {
                     MoveLabel(r.fast, r.species)
                     MoveLabel(r.charged, r.species)
-                    GbaText("DPS ${fmt1(r.dps)}${pctOfTop(r.dps, topDps)} · TDO ${r.tdo.toInt()}", size = 12.sp, color = Pal.Muted)
                 }
             }
         }
@@ -270,8 +269,6 @@ private fun MaxTab(
                 Column {
                     MoveLabel(r.fast, r.species)
                     GbaText("→ ${r.maxMoveName}", size = 12.sp, color = Pal.Dynamax)
-                    GbaText((if (tanks) "Aguante" else "Daño") + pctOfTop(value, topShown).replace(" (", "").replace(")", ""),
-                        size = 11.sp, color = Pal.Muted)
                 }
             }
         }

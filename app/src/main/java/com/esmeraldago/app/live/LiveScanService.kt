@@ -130,6 +130,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             _status.value = "Leyendo…"
             val idx = container.scan.idx()
             val parser = container.scan.parserFor(idx)
+            pendingAppraisal = null
             val a = withOverlaysHidden { captureBest(parser) }
             when {
                 a == null -> _status.value = "Sin imagen de la pantalla todavía."
@@ -138,7 +139,12 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
                     container.scan.clearLatest()
                     _status.value = a.result.problem ?: "No es la ficha de un Pokémon."
                 }
-                else -> { container.scan.submit(a, idx, parser); _status.value = null }
+                else -> {
+                    container.scan.submit(a, idx, parser)
+                    // La valoración leída sola se empareja con la ficha (mismo PC y PS).
+                    pendingAppraisal?.let { container.scan.submit(it, idx, parser) }
+                    _status.value = null
+                }
             }
             showPanel(true)
         }
@@ -175,7 +181,53 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             }
             delay(300)
         }
+        // IV sin definir: con el servicio de accesibilidad, se abre la valoración, se leen las barras y se cierra.
+        if (best.result.screen == ScreenType.DETAIL && !best.result.ivExact && gestures != null &&
+            container.settings.state.value.autoScroll
+        ) {
+            _status.value = "Leyendo la valoración…"
+            pendingAppraisal = runCatching { readAppraisal(parser, gestures) }.getOrNull()
+        }
         return best
+    }
+
+    /** Valoración leída en el último escaneo (se envía después de la ficha para que se emparejen). */
+    private var pendingAppraisal: OcrScanner.Analysis? = null
+
+    /**
+     * Abre la valoración desde la ficha: toca el botón de menú (abajo a la derecha), busca con el OCR la opción
+     * "Appraise"/"Valorar", avanza el diálogo hasta que se ven las barras, las lee y la cierra. Ante cualquier
+     * pantalla inesperada vuelve atrás y abandona: nunca toca nada más.
+     */
+    private suspend fun readAppraisal(parser: com.esmeraldago.core.scan.ScreenParser, g: LiveGestureService): OcrScanner.Analysis? {
+        val words = listOf("appraise", "valorar", "evaluar", "tasar")
+        // Dos posiciones posibles del botón de menú (con y sin la barra de navegación de 3 botones).
+        for ((x, y) in listOf(0.86f to 0.925f, 0.86f to 0.89f)) {
+            if (!g.tap(x, y)) return null
+            delay(700)
+            val menu = analyzeFrame(parser) ?: return null
+            val item = menu.lines.firstOrNull { l -> words.any { l.text.lowercase().contains(it) } }
+            if (item == null) {
+                // El toque no abrió el menú: si cambió la pantalla, se vuelve; si no, se prueba la otra posición.
+                if (menu.result.screen != ScreenType.DETAIL) { g.back(); delay(500); return null }
+                continue
+            }
+            g.tap((item.left + item.right) / 2, (item.top + item.bottom) / 2)
+            delay(1200)
+            repeat(5) {
+                val a = analyzeFrame(parser)
+                if (a != null && a.result.screen == ScreenType.APPRAISAL && a.bars != null) {
+                    g.tap(0.5f, 0.85f) // cierra la valoración y vuelve a la ficha
+                    delay(800)
+                    return a
+                }
+                g.tap(0.5f, 0.85f) // avanza el diálogo del líder de equipo
+                delay(900)
+            }
+            g.back(); delay(500)
+            return null
+        }
+        return null
     }
 
     private suspend fun analyzeFrame(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
