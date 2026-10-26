@@ -50,7 +50,7 @@ fun CollectionScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onAdd: () -> 
     var query by rememberSaveable { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize()) {
-        TitleBar("Mis Pokémon", onBack) {
+        TitleBar("Mi caja", onBack) {
             Box(
                 Modifier.heightIn(min = 40.dp).background(Pal.HeaderDark, SmallPixelShape).clickable(onClick = onAdd)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -59,7 +59,7 @@ fun CollectionScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onAdd: () -> 
         }
         WithGame { idx, _ ->
             if (items.isEmpty()) {
-                DialogBox("Tu caja está vacía. Escaneá capturas de tus Pokémon (pantalla de detalle y de valoración) o añadilos a mano.",
+                DialogBox("Caja vacía. Los Pokémon se cargan escaneando capturas o a mano.",
                     Modifier.padding(8.dp))
                 Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelButton("ESCANEAR", onScan)

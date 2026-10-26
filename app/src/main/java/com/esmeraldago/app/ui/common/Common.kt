@@ -308,7 +308,7 @@ fun RankRow(
 @Composable
 fun SpeciesPickerDialog(
     idx: GameIndex,
-    title: String = "Elegí un Pokémon",
+    title: String = "Elegir Pokémon",
     filter: (Species) -> Boolean = { !it.shadow && !it.mega },
     preferred: List<Species> = emptyList(),
     onDismiss: () -> Unit,
@@ -327,7 +327,6 @@ fun SpeciesPickerDialog(
             GbaText(title, size = 17.sp)
             Spacer(Modifier.height(6.dp))
             SearchField(query, { query = it }, "Buscar (nombre o número)")
-            if (matches.size > shown.size) GbaText("Mostrando ${shown.size} de ${matches.size}: escribí para filtrar.", size = 12.sp, color = Pal.Muted)
             Spacer(Modifier.height(6.dp))
             LazyColumn(Modifier.fillMaxWidth()) {
                 items(shown, key = { it.id }) { s ->

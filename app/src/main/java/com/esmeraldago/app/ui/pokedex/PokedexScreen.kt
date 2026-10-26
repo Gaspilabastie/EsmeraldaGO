@@ -55,7 +55,8 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
     val owned by LocalContainer.current.collection.items.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     var gen by rememberSaveable { mutableStateOf("TODAS") }
-    var type by rememberSaveable { mutableStateOf<String?>(null) }
+    // Hasta dos tipos, como en TIPOS: tocar uno elegido lo quita; con dos elegidos, el nuevo reemplaza al más viejo.
+    var types by rememberSaveable { mutableStateOf(listOf<String>()) }
     var forms by rememberSaveable { mutableStateOf(false) }
     var onlyMine by rememberSaveable { mutableStateOf(false) }
 
@@ -63,7 +64,7 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
         TitleBar("Pokédex", onBack)
         WithGame { idx, _ ->
             val ownedIds = remember(owned) { owned.map { it.speciesId }.toSet() }
-            val list = remember(idx, query, gen, type, forms, onlyMine, ownedIds) {
+            val list = remember(idx, query, gen, types, forms, onlyMine, ownedIds) {
                 val range = GENERATIONS.first { it.first == gen }.second
                 val q = query.trim().lowercase()
                 idx.released.asSequence()
@@ -72,7 +73,7 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                     // se encuentran buscándolos.
                     .filter { q.isNotEmpty() || (idx.cosmeticOf[it.id] == null && idx.cosmeticOf[it.baseId] == null && it.id !in GameIndex.BATTLE_FORMS && it.id !in GameIndex.ALIAS_FORMS) }
                     .filter { it.dex in range }
-                    .filter { type == null || type in it.types }
+                    .filter { s -> types.all { it in s.types } }
                     .filter { !onlyMine || it.baseId in ownedIds }
                     .filter { q.isEmpty() || it.name.lowercase().contains(q) || it.dex.toString() == q }
                     .sortedWith(compareBy({ it.dex }, { it.shadow }, { it.mega }))
@@ -87,13 +88,19 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                     Column {
                         Column(Modifier.padding(8.dp)) { SearchField(query, { query = it }, "Buscar (nombre o número)") }
                         PixelTabs(GENERATIONS.map { it.first }, gen, { if (it == "TODAS") it else "GEN $it" }, { gen = it })
-                        TypePicker(type ?: "", { t -> type = if (t == type) null else t })
+                        TypePicker("", { t ->
+                            types = when {
+                                t in types -> types - t
+                                types.size < 2 -> types + t
+                                else -> listOf(types.last(), t)
+                            }
+                        }, selectedSet = types.toSet())
                         FlowRow(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             ToggleChip("Otras versiones", forms, { forms = it })
-                            ToggleChip("Solo los míos", onlyMine, { onlyMine = it })
+                            ToggleChip("En la caja", onlyMine, { onlyMine = it })
                         }
-                        GbaText("${list.size} entradas · tenés $caught de ${idx.byDex.size}", size = 12.sp, color = Pal.Muted,
+                        GbaText("${list.size} resultados", size = 12.sp, color = Pal.Muted,
                             modifier = Modifier.padding(horizontal = 10.dp))
                     }
                 }
@@ -116,8 +123,6 @@ fun PokedexScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                                     s.types.forEach { TypeBadge(it, small = true) }
                                 }
-                                GbaText("ATQ ${s.atk} · DEF ${s.def} · PS ${s.sta} · PC máx ${PokeMath.cp(s, 40.0, Ivs.PERFECT, idx)}",
-                                    size = 11.sp, color = Pal.Muted)
                             }
                         }
                     }

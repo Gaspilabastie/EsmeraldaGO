@@ -125,7 +125,7 @@ fun LivePanel(container: AppContainer, service: LiveScanService) {
                     pending > 0 -> "Leyendo…"
                     saved != null -> saved
                     draft == null && failures.isNotEmpty() -> "No se reconoció: ${failures.last().reason}"
-                    draft == null -> "Abrí un Pokémon en el juego y tocá la burbuja. Sacá también su valoración para IV exactos."
+                    draft == null -> "Abrir un Pokémon en el juego y tocar la burbuja. La valoración da los IV exactos."
                     else -> null
                 }
                 info?.let { GbaText(it, size = 13.sp, color = Pal.Muted) }
@@ -142,14 +142,14 @@ fun LivePanel(container: AppContainer, service: LiveScanService) {
                             GbaText("PC ${draft.result.cp ?: "?"} · Nv ${fmtLevel(p.level)}" + (p.hp?.let { " · PS $it" } ?: ""), size = 13.sp)
                             GbaText(
                                 when {
-                                    draft.result.candidates.isEmpty() -> "IV: no cuadran (revisá en la app)"
+                                    draft.result.candidates.isEmpty() -> "IV sin solución: revisar en la app."
                                     draft.result.ivExact -> "IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%), exactos"
-                                    else -> "IV ${draft.result.ivRangeText} · ${draft.result.candidates.size} opciones: sacá la VALORACIÓN"
+                                    else -> "IV ${draft.result.ivRangeText} · ${draft.result.candidates.size} opciones: falta la valoración"
                                 },
                                 size = 13.sp, color = if (draft.result.ivExact) Pal.Text else Pal.Warn,
                             )
                             if (draft.result.screen != ScreenType.APPRAISAL && draft.sources < 2 && draft.result.fast == null)
-                                GbaText("Bajá hasta los ataques para leerlos.", size = 11.sp, color = Pal.Muted)
+                                GbaText("Ataques fuera de pantalla: bajar la ficha.", size = 11.sp, color = Pal.Muted)
                         }
                     }
                     draft.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Warn) }
@@ -167,8 +167,8 @@ fun LivePanel(container: AppContainer, service: LiveScanService) {
                         PixelButton("GUARDAR", {
                             val ok = container.scan.saveOne(draft.key, container.collection)
                             saved = when {
-                                ok != null -> "¡${s?.displayName ?: "Pokémon"} guardado en la CAJA!"
-                                draft.result.cp == null -> "Falta el PC: sacá la valoración o escribilo en REVISAR."
+                                ok != null -> "${s?.displayName ?: "Pokémon"} guardado en la caja."
+                                draft.result.cp == null -> "Falta el PC: escanear la valoración o cargarlo en REVISAR."
                                 else -> "No se pudo guardar."
                             }
                         }, color = Pal.Blue, enabled = s != null)

@@ -203,8 +203,8 @@ class ScreenParser(private val idx: GameIndex) {
                 ScreenType.UNKNOWN,
                 reading = reading,
                 problem = when {
-                    reading.cp != null -> "Esta pantalla no es la ficha de un Pokémon (no se ven los PS). Abrí uno y volvé a escanear."
-                    else -> "No es la ficha de un Pokémon: abrí uno en el juego y volvé a escanear."
+                    reading.cp != null -> "La captura no es la ficha de un Pokémon (no se ven los PS)."
+                    else -> "La captura no es la ficha de un Pokémon."
                 },
             )
         }
@@ -249,7 +249,7 @@ class ScreenParser(private val idx: GameIndex) {
             if (options.size == 1) {
                 val r = options.first()
                 return if (pattern.contains('?')) r.copy(cpInferred = true,
-                    problem = r.problem ?: "PC reconstruido de varios fotogramas (${pattern.replace('?', '_')} → ${r.cp}): revisalo.")
+                    problem = r.problem ?: "PC reconstruido de varios fotogramas (${pattern.replace('?', '_')} → ${r.cp}): revisar.")
                 else r
             }
         }
@@ -580,9 +580,9 @@ class ScreenParser(private val idx: GameIndex) {
                 .filter { v -> target.any { s -> solve(s, v, levels).isNotEmpty() } }
             val read = cp
             when {
-                fixes.size == 1 -> { cp = fixes.first(); cpInferred = true; cpNote = "Leí PC $read, pero con los PS y el polvo solo cuadra PC $cp: revisalo." }
+                fixes.size == 1 -> { cp = fixes.first(); cpInferred = true; cpNote = "Se leyó PC $read, pero con los PS y el polvo solo cuadra PC $cp: revisar." }
                 appraisal != null -> { cp = null; cpNote = "El PC leído ($read) no cuadra: se dedujo de la valoración." }
-                else -> { cp = null; cpNote = "El PC no se lee bien (leí $read, ¿lo tapa el Pokémon?): agregá la valoración o escribilo." }
+                else -> { cp = null; cpNote = "PC ilegible (se leyó $read; puede taparlo el Pokémon): agregar la valoración o cargarlo a mano." }
             }
             opts = if (cp != null || appraisal != null) options(cp) else pool.map { Option(it, emptyList(), identity(it), 0) }
         }
@@ -628,14 +628,14 @@ class ScreenParser(private val idx: GameIndex) {
         val foundMoves = reading.moveTexts.mapNotNull { matchMove(it, movePool) }.distinctBy { it.id }
 
         val problem = when {
-            species == null -> "No se reconoció la especie: elegila a mano."
+            species == null -> "Especie no reconocida: elegirla a mano."
             guessedByTypes -> "No se leyó el nombre ni los caramelos: por PC, PS y tipo podría ser " +
-                ranked.take(3).joinToString(", ") { it.s.name } + ". Confirmá la especie."
-            ambiguous -> "Puede ser ${tied.joinToString(" o ") { it.s.name }}: confirmá la forma."
-            appraisalConflict -> "La valoración ($appraisal) no coincide con el PC/PS leídos: revisá los IV."
+                ranked.take(3).joinToString(", ") { it.s.name } + ". Confirmar la especie."
+            ambiguous -> "Puede ser ${tied.joinToString(" o ") { it.s.name }}: confirmar la forma."
+            appraisalConflict -> "La valoración ($appraisal) no coincide con el PC/PS leídos: revisar los IV."
             cpNote != null && candidates.isEmpty() -> cpNote
-            cp == null -> "No se ve el PC (¿lo tapa el Pokémon?): agregá la valoración o escribilo."
-            candidates.isEmpty() -> "Ningún IV da ese PC/PS: revisá la especie o el PC."
+            cp == null -> "PC no visible (puede taparlo el Pokémon): agregar la valoración o cargarlo a mano."
+            candidates.isEmpty() -> "Ningún IV da ese PC/PS: revisar la especie o el PC."
             else -> cpNote
         }
 

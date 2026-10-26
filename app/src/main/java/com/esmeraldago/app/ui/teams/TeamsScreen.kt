@@ -55,7 +55,7 @@ fun TeamsScreen(onBack: () -> Unit, onOwned: (String) -> Unit, onAdvice: () -> U
             }
             val (team, others) = data ?: return@WithGame LoadingBox()
             if (team.isEmpty()) {
-                DialogBox("No encontré Pokémon tuyos que sirvan en ${league.label}.", Modifier.padding(8.dp))
+                DialogBox("Sin Pokémon aptos para la ${league.label}.", Modifier.padding(8.dp))
                 Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelButton("ESCANEAR", onScan)
                     PixelButton("VER QUÉ ATRAPAR", onAdvice, color = Pal.Gold)
@@ -64,17 +64,10 @@ fun TeamsScreen(onBack: () -> Unit, onOwned: (String) -> Unit, onAdvice: () -> U
             }
             val rest = others.filter { o -> team.none { it.owned.uid == o.owned.uid && it.species.id == o.species.id } }
             LazyColumn(Modifier.fillMaxSize()) {
-                item {
-                    DialogBox(
-                        "Equipo sugerido para ${league.label}: combina ranking del meta (PvPoke), IV para la liga y " +
-                            "evita debilidades compartidas.",
-                        Modifier.padding(8.dp),
-                    )
-                }
                 itemsIndexed(team, key = { _, c -> "t|${c.owned.uid}|${c.species.id}" }) { i, c -> CandidateRow(c, ROLES.getOrElse(i) { "" }, idx, onOwned) }
                 if (team.size < 3) item {
                     Column {
-                        DialogBox("Te falta${if (team.size == 2) " un" else "n"} Pokémon para completar el equipo.", Modifier.padding(8.dp))
+                        DialogBox(if (team.size == 2) "Falta un Pokémon para completar el equipo." else "Faltan Pokémon para completar el equipo.", Modifier.padding(8.dp))
                         Row(Modifier.padding(horizontal = 8.dp)) { PixelButton("VER QUÉ ATRAPAR", onAdvice, color = Pal.Gold) }
                     }
                 }
@@ -100,7 +93,7 @@ private fun CandidateRow(c: PvpCandidate, role: String, idx: GameIndex, onOwned:
             c.moveset.mapNotNull { idx.move(it) }.forEach { m ->
                 MoveLabel(m, c.species, 12)
                 if (m.id in c.missingMoves) {
-                    GbaText("  ↳ te falta: " + if (c.species.isElite(m.id)) "requiere MT Élite" else "usá una MT de ataque", size = 11.sp, color = Pal.Warn)
+                    GbaText("  ↳ por aprender: " + if (c.species.isElite(m.id)) "MT Élite" else "MT de ataque", size = 11.sp, color = Pal.Warn)
                 }
             }
             if (c.needsEvolve) GbaText("Los ataques se definen al evolucionar.", size = 11.sp, color = Pal.Muted)

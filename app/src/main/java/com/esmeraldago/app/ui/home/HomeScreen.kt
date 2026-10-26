@@ -113,9 +113,9 @@ fun HomeScreen(onOpen: (String) -> Unit) {
 private fun LookupCard(idx: GameIndex, onOpen: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     WindowBox(Modifier.fillMaxWidth()) {
-        GbaText("¿TE SIRVE ESTE POKéMON?", size = 14.sp, color = Pal.Muted)
+        GbaText("CONSULTAR UN POKéMON", size = 14.sp, color = Pal.Muted)
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-            SearchField(query, { query = it }, "Buscá por nombre", Modifier.weight(1f))
+            SearchField(query, { query = it }, "Nombre", Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
             // Escanear: el botón grande (lo más usado junto con buscar).
             Column(
@@ -134,7 +134,7 @@ private fun LookupCard(idx: GameIndex, onOpen: (String) -> Unit) {
                 .filter { it.name.lowercase().contains(q) || it.nameEs?.lowercase()?.contains(q) == true }
                 .sortedBy { if (it.name.lowercase().startsWith(q) || it.nameEs?.lowercase()?.startsWith(q) == true) 0 else 1 }
                 .take(5).toList()
-            if (hits.isEmpty()) GbaText("No encontré \"$query\".", size = 13.sp, color = Pal.Muted, modifier = Modifier.padding(top = 6.dp))
+            if (hits.isEmpty()) GbaText("Sin resultados para \"$query\".", size = 13.sp, color = Pal.Muted, modifier = Modifier.padding(top = 6.dp))
             hits.forEach { s ->
                 Row(
                     Modifier.fillMaxWidth().padding(top = 4.dp).clickable { onOpen("species/${s.id}") },
@@ -259,7 +259,10 @@ private fun headingEs(e: GoEvent) = when (e.type) {
     "max-battles" -> "Batallas Max"; "max-mondays" -> "Lunes Max"; "wild-area" -> "Zona salvaje"; else -> "Evento"
 }
 
-private class EventView(val event: GoEvent, val species: List<Species>, val reason: String?, val important: Boolean)
+/** [extras]: eventos del mismo jefe unidos a esta fila (la Hora de incursiones de un jefe que ya está en incursiones). */
+private class EventView(val event: GoEvent, val species: List<Species>, val reason: String?, val important: Boolean) {
+    val extras = mutableListOf<String>()
+}
 
 /**
  * Eventos activos o de los próximos 10 días. Importante: Día de la Comunidad, GO Tour, o si alguno de sus
@@ -280,6 +283,16 @@ private fun EventsCard(idx: GameIndex, reco: Recommender, onOpen: (String) -> Un
                 val species = (e.featured.mapNotNull { idx.findByName(it) }.ifEmpty { speciesInName(e.name, idx) }).distinctBy { it.id }
                 val reason = species.firstNotNullOfOrNull { s -> reco.raidHighlights(s, 1).firstOrNull()?.let { "${s.displayName}: $it" } }
                 EventView(e, species, reason, e.type == "community-day" || e.type == "pokemon-go-tour" || reason != null)
+            }
+            .let { all ->
+                // LeekDuck publica aparte la rotación de un jefe y su Hora de incursiones: van en una sola fila.
+                val battles = all.filter { it.event.type == "raid-battles" }
+                all.filter { v ->
+                    if (v.event.type != "raid-hour") return@filter true
+                    val host = battles.firstOrNull { b -> b.species.any { s -> v.species.any { it.id == s.id } } } ?: return@filter true
+                    host.extras += "Hora de incursiones: ${whenText(v.event)}"
+                    false
+                }
             }
             .sortedWith(compareBy<EventView>({ !it.important }, { EVENT_PRIORITY.indexOf(it.event.type) }, { it.event.start }))
             .take(4)
@@ -318,6 +331,7 @@ private fun EventRow(v: EventView, onClick: () -> Unit) {
             GbaText((if (v.important) "★ " else "") + headingEs(v.event) + " · " + whenText(v.event), size = 12.sp,
                 color = if (v.important) Pal.Good else Pal.Muted)
             GbaText(v.event.name, size = 13.sp, maxLines = 2)
+            v.extras.forEach { GbaText(it, size = 11.sp, color = Pal.Good, maxLines = 2) }
             v.reason?.let { GbaText(it, size = 11.sp, color = Pal.Muted, maxLines = 2) }
         }
     }
@@ -326,15 +340,15 @@ private fun EventRow(v: EventView, onClick: () -> Unit) {
 private val DAY = DateTimeFormatter.ofPattern("EEE d/M", Locale("es", "AR"))
 private val HOUR = DateTimeFormatter.ofPattern("HH:mm")
 
-/** "AHORA (hasta 17:00)", "hoy 14:00", "mañana 18:00", "sáb 21/11 14:00". */
+/** "hasta 17:00", "hasta mar 27/10", "hoy 14:00", "mañana 18:00", "sáb 21/11 14:00". */
 private fun whenText(e: GoEvent): String {
     val zone = ZoneId.systemDefault()
     val now = Instant.now()
     val start = e.start ?: return ""
     if (!start.isAfter(now)) {
-        val end = e.end ?: return "AHORA"
-        return if (Duration.between(now, end).toHours() < 24) "AHORA (hasta ${HOUR.format(end.atZone(zone))})"
-        else "AHORA (hasta el ${DAY.format(end.atZone(zone))})"
+        val end = e.end ?: return "en curso"
+        return if (Duration.between(now, end).toHours() < 24) "hasta ${HOUR.format(end.atZone(zone))}"
+        else "hasta ${DAY.format(end.atZone(zone))}"
     }
     val s = start.atZone(zone)
     val days = ChronoUnit.DAYS.between(now.atZone(zone).toLocalDate(), s.toLocalDate())

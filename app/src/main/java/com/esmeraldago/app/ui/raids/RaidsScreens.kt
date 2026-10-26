@@ -102,7 +102,6 @@ fun RaidsScreen(onBack: () -> Unit, onBoss: (String, String) -> Unit) {
                 item {
                     WindowBox(Modifier.fillMaxWidth().padding(8.dp)) {
                         GbaText("Otro jefe", size = 16.sp)
-                        GbaText("Elegí cualquier Pokémon como jefe y su nivel de incursión.", size = 12.sp, color = Pal.Muted)
                         Spacer(Modifier.height(4.dp))
                         PixelTabs(RaidTier.entries, pickTier, { it.label }, { pickTier = it })
                         Spacer(Modifier.height(6.dp))
@@ -163,14 +162,12 @@ fun CountersScreen(bossId: String, tierName: String, onBack: () -> Unit, onSpeci
                 val (team, _) = rememberComputed(boss.id, tier, owned) { reco.raidTeam(boss, tier, owned, size = 12) }
                 val list = team ?: return@WithGame LoadingBox()
                 if (list.isEmpty()) {
-                    DialogBox("Todavía no cargaste Pokémon para armar tu equipo.", Modifier.padding(8.dp))
+                    DialogBox("Sin Pokémon en la caja.", Modifier.padding(8.dp))
                     Row(Modifier.padding(horizontal = 8.dp)) { PixelButton("ESCANEAR", onScan) }
                     return@WithGame
                 }
                 val top = list.first().result.score
                 LazyColumn(Modifier.fillMaxSize()) {
-                    item { GbaText("Tu mejor equipo de 6 (máx. un Mega), según su nivel e IV reales:", size = 12.sp,
-                        color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp)) }
                     itemsIndexed(list, key = { _, o -> o.owned.uid + o.asMega }) { i, o ->
                         val p = o.owned
                         CounterRow(i + 1, o.result, top, onSpecies, topDps = list.first().result.dps,

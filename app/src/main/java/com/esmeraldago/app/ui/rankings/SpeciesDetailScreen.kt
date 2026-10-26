@@ -74,7 +74,10 @@ import com.esmeraldago.core.reco.Recommender
 
 private enum class Page(val label: String) { SUMMARY("INFO"), BATTLE("COMBATE"), FORMS("FORMAS") }
 
-/** Cómo rinde como atacante de un tipo: puesto en su clase, tier y % contra el mejor de TODOS, y su mejor par de ataques. */
+/**
+ * Cómo rinde como atacante de un tipo: el mismo puesto y tier que en RANKINGS (ranking completo, con oscuros, megas
+ * y legado), y su mejor par de ataques. Se destaca si está entre los 30 primeros o en tier B o mejor (≥75 % del #1).
+ */
 private class PveRole(
     val type: String, val rank: Int, val tier: Tier, val pct: Int, val bestName: String,
     val result: PveResult, val withoutElite: PveResult?,
@@ -87,7 +90,10 @@ private class MaxRole(val moveName: String, val type: String, val gmax: Boolean,
 
 private class PvpIvs(val best: PokeMath.PvpIvResult?, val bestFloor10: PokeMath.PvpIvResult?)
 
-private class EntryData(val pve: List<PveRole>, val max: List<MaxRole>, val pvp: Map<League, PvpIvs>)
+/** Puesto entre los tanques Dinamax (Def × PS), como en RANKINGS › Dinamax › Tanques. */
+private class TankRole(val rank: Int, val tier: Tier)
+
+private class EntryData(val pve: List<PveRole>, val max: List<MaxRole>, val tank: TankRole?)
 
 /**
  * Entrada de Pokédex. Las pestañas quedan fijas arriba; cada página tiene su propio desplazamiento.
@@ -143,14 +149,14 @@ fun SpeciesDetailScreen(id: String, onBack: () -> Unit, onSpecies: (String) -> U
 }
 
 private fun compute(s: Species, idx: GameIndex, level: Double, maxLevel: Int, pvpMaxLevel: Double): EntryData {
-    // PvE: solo los tipos de SUS ataques cargados. Puesto en su clase (un común contra los que no son oscuros ni
-    // megas; si no, Mewtwo queda #16 detrás de sus propias versiones), tier contra el #1 de TODOS (como RANKINGS).
+    // PvE: solo los tipos de SUS ataques cargados. El puesto es el de RANKINGS (ranking completo): así coincide con
+    // la fila que se resalta al tocarlo.
     val pve = PveCalc.usableCharged(s, idx).map { it.type }.distinct().mapNotNull { type ->
         val full = PveCalc.topAttackers(type, idx, level, limit = 400)
-        val inClass = full.filter { (s.shadow || s.mega || !it.species.shadow) && (s.mega || !it.species.mega) }.distinctBy { it.species.id }
-        val i = inClass.indexOfFirst { it.species.id == s.id }
+        val ranked = full.distinctBy { it.species.id }
+        val i = ranked.indexOfFirst { it.species.id == s.id }
         if (i < 0) return@mapNotNull null
-        val r = inClass[i]
+        val r = ranked[i]
         val top = full.first()
         PveRole(type, i + 1, Tier.of(r.score, top.score), (r.score / top.score * 100).toInt(), top.species.displayName, r,
             full.firstOrNull { it.species.id == s.id && !it.usesElite }.takeIf { r.usesElite })
@@ -169,12 +175,12 @@ private fun compute(s: Species, idx: GameIndex, level: Double, maxLevel: Int, pv
         }.sortedWith(compareBy(nullsLast()) { it.rank })
     }
 
-    // PvP: IV solo para las ligas en las que compite; los legendarios/singulares/ultraentes salen con piso 10/10/10.
-    val pvp = if (s.mega) emptyMap() else League.entries.filter { it != League.MASTER && idx.pvpRank(it, s.id) != null }.associateWith { lg ->
-        val table = PokeMath.pvpTable(s, lg.cap, pvpMaxLevel, idx)
-        PvpIvs(table.firstOrNull(), table.firstOrNull { minOf(it.ivs.atk, it.ivs.def, it.ivs.sta) >= 10 }.takeIf { s.nonBudget })
+    val tank = if ((!s.dynamax && !s.gigantamax) || s.shadow || s.mega) null else {
+        val tanks = MaxCalc.topTanks(idx, level, limit = 400).distinctBy { it.species.id }
+        val i = tanks.indexOfFirst { it.species.id == s.id }
+        if (i < 0) null else TankRole(i + 1, Tier.of(tanks[i].bulk, tanks.first().bulk))
     }
-    return EntryData(pve, max, pvp)
+    return EntryData(pve, max, tank)
 }
 
 // ---------------------------------------------------------------- encabezado
@@ -205,7 +211,7 @@ private fun Header(s: Species, idx: GameIndex, shiny: Boolean, gmaxView: Boolean
                     StatLine("ATQ", s.atk); StatLine("DEF", s.def); StatLine("PS", s.sta)
                     GbaText("PC máx (Nv 40): ${PokeMath.cp(s, 40.0, Ivs.PERFECT, idx)}", size = 12.sp, color = Pal.Muted)
                     GbaText("PC máx (Nv 50): ${PokeMath.cp(s, 50.0, Ivs.PERFECT, idx)}", size = 12.sp, color = Pal.Muted)
-                    s.nameEs?.let { GbaText("En el juego en español: $it", size = 12.sp, color = Pal.Muted) }
+                    s.nameEs?.let { GbaText("Nombre en español: $it", size = 12.sp, color = Pal.Muted) }
                 }
             }
         }
@@ -284,13 +290,12 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
             data.pve.isEmpty() -> GbaText("No se destaca como atacante en ningún tipo.", size = 13.sp, color = Pal.Muted)
             data.pve.none { it.relevant } -> GbaText("No se destaca como atacante. Sus mejores puestos:", size = 13.sp, color = Pal.Muted)
             else -> {
-                GbaText(classNote(s), size = 11.sp, color = Pal.Muted)
                 data.pve.filter { it.relevant }.take(4).forEach { r ->
                     RankingLink({ onRanking("pve:${r.type}:${s.id}") }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TierBadge(r.tier)
                             TypeBadge(r.type, small = true)
-                            GbaText("#${r.rank} · ${r.pct}% de ${r.bestName}", size = 13.sp, maxLines = 2)
+                            GbaText("#${r.rank}", size = 13.sp)
                         }
                         GbaText(movesText(s, r.result.fast, r.result.charged), size = 12.sp, color = Pal.Muted)
                     }
@@ -313,10 +318,11 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
 
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Combates de entrenador")
-        if (s.mega) GbaText("Las megas no se usan en combates de entrenador.", size = 13.sp, color = Pal.Muted)
-        else {
+        run {
             val ranked = League.entries.mapNotNull { lg -> idx.pvpRank(lg, s.id)?.let { lg to it } }
-            if (ranked.isEmpty()) GbaText("No compite en ninguna liga.", size = 13.sp, color = Pal.Muted)
+            // Las megas solo se permiten en algunas copas (como Master: Edición Mega), que no tienen ranking acá.
+            if (ranked.isEmpty()) GbaText(if (s.mega) "Sin ranking: las megas solo se permiten en algunas copas." else "No compite en ninguna liga.",
+                size = 13.sp, color = Pal.Muted)
             ranked.forEach { (lg, r) ->
                 RankingLink({ onRanking("pvp:${lg.name}:${s.id}") }) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -336,22 +342,26 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
     if (base.dynamax || base.gigantamax) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Batallas Max")
         when {
-            s.shadow -> GbaText("Los oscuros no pueden Dinamaxizar: hace falta uno atrapado en una batalla Max.", size = 13.sp, color = Pal.Muted)
-            s.mega -> GbaText("Las megas no se usan en batallas Max.", size = 13.sp, color = Pal.Muted)
+            s.shadow -> GbaText("Los Pokémon oscuros no pueden Dinamaxizar.", size = 13.sp, color = Pal.Muted)
+            s.mega -> GbaText("Sin uso en batallas Max.", size = 13.sp, color = Pal.Muted)
             data == null -> Reserved("Calculando…", 2)
             else -> {
-                GbaText((if (s.gigantamax && s.dynamax) "Puede ser Dinamax y Gigamax." else if (s.gigantamax) "Puede ser Gigamax." else "Puede ser Dinamax.") +
-                    " Para cada ataque Max: puesto entre los atacantes Max de ese tipo y tier contra el mejor.",
-                    size = 11.sp, color = Pal.Muted)
-                // En la vista Gigamax, solo su ataque G-Max.
+                // Los dos roles siempre: atacante (por cada ataque Max; en la vista Gigamax, solo el G-Max) y tanque.
                 data.max.filter { !gmaxView || it.gmax }.forEach { m ->
                     RankingLink({ onRanking("max:${m.type}:${s.id}") }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             m.tier?.let { TierBadge(it) }
                             TypeBadge(m.type, small = true)
-                            GbaText(m.moveName + (m.rank?.let { " · #$it" } ?: ""), size = 13.sp, maxLines = 2)
+                            GbaText("Atacante · ${m.moveName}" + (m.rank?.let { " · #$it" } ?: ""), size = 13.sp, maxLines = 2)
                         }
-                        GbaText("${m.damage.toInt()} de daño · carga la barra con ${m.bestFast.name}", size = 12.sp, color = Pal.Muted)
+                    }
+                }
+                data.tank?.let { t ->
+                    RankingLink({ onRanking("maxtank::${s.id}") }) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TierBadge(t.tier)
+                            GbaText("Tanque · #${t.rank}", size = 13.sp)
+                        }
                     }
                 }
             }
@@ -377,12 +387,6 @@ private fun RankingLink(onClick: () -> Unit, content: @Composable () -> Unit) {
     }
 }
 
-private fun classNote(s: Species) = when {
-    s.mega -> "Puesto entre todos · tier y % contra el mejor."
-    s.shadow -> "Puesto entre los que no son mega · tier y % contra el mejor de todos."
-    else -> "Puesto entre los que no son oscuros ni megas · tier y % contra el mejor de todos."
-}
-
 private fun movesText(s: Species, fast: Move, charged: Move) =
     listOf(fast, charged).joinToString(" + ") { it.name + if (s.isElite(it.id)) " (LEGADO)" else "" }
 
@@ -406,7 +410,7 @@ private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit, g
 
 /** Qué forma es, en corto: "Mega X", "Alola", o lo que diga el paréntesis del nombre ("Wash", "Galar Zen"). */
 private fun subLabel(s: Species): String? =
-    if (s.mega) megaLabel(s) else regionTag(s) ?: Regex("""\((.+)\)""").find(s.name)?.groupValues?.get(1)
+    if (s.mega) megaLabel(s) else if (s.shadow) "Oscuro" else regionTag(s) ?: Regex("""\((.+)\)""").find(s.name)?.groupValues?.get(1)
         ?.replace("Galarian", "Galar")?.replace("Alolan", "Alola")?.replace("Hisuian", "Hisui")?.replace("Paldean", "Paldea")
 
 private fun regionTag(s: Species): String? = when {
@@ -441,8 +445,7 @@ private fun Battle(s: Species, idx: GameIndex, data: EntryData?) {
         when {
             data == null -> Reserved("Calculando…", 3)
             data.pve.isEmpty() -> GbaText(
-                if (PveCalc.usableCharged(s, idx).isEmpty()) "No tiene ataques que hagan daño (por ejemplo Ditto copia al rival)."
-                else "No figura entre los mejores atacantes de ningún tipo.",
+                if (PveCalc.usableCharged(s, idx).isEmpty()) "No tiene ataques que causen daño." else "Sin uso destacado en incursiones.",
                 size = 13.sp, color = Pal.Muted,
             )
             else -> data.pve.forEachIndexed { i, r ->
@@ -454,48 +457,49 @@ private fun Battle(s: Species, idx: GameIndex, data: EntryData?) {
                         }
                         MoveLabel(r.result.fast, s, 12)
                         MoveLabel(r.result.charged, s, 12)
-                        r.withoutElite?.let { GbaText("Sin legado: ${it.fast.name} + ${it.charged.name} (${fmt1(it.dps)} DPS)", size = 11.sp, color = Pal.Muted) }
                     }
                     GbaText("${fmt1(r.result.dps)} DPS\n${r.result.tdo.toInt()} TDO", size = 12.sp)
                 }
             }
         }
-        GbaText("DPS: daño por segundo · TDO: daño total antes de caer, contra un jefe débil a ese tipo.", size = 11.sp, color = Pal.Muted,
-            modifier = Modifier.padding(top = 4.dp))
     }
 
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Combates de entrenador")
         val ranked = League.entries.mapNotNull { lg -> idx.pvpRank(lg, s.id)?.let { lg to it } }
-        when {
-            s.mega -> GbaText("Las megas no se usan en combates de entrenador.", size = 13.sp, color = Pal.Muted)
-            ranked.isEmpty() -> GbaText("No compite en ninguna liga.", size = 13.sp, color = Pal.Muted)
-        }
-        if (!s.mega) ranked.forEachIndexed { i, (lg, r) ->
+        if (ranked.isEmpty()) GbaText(if (s.mega) "Sin ranking: las megas solo se permiten en algunas copas." else "No compite en ninguna liga.",
+            size = 13.sp, color = Pal.Muted)
+        ranked.forEachIndexed { i, (lg, r) ->
             if (i > 0) Divider()
             GbaText("${lg.label} · #${r.first}", size = 14.sp)
             GbaText(r.second.moveset.mapNotNull { idx.move(it)?.name }.joinToString(" · "), size = 12.sp)
             r.second.nonEliteMoveset(s)?.takeIf { it.isNotEmpty() }?.let { alt ->
                 GbaText("Sin MT Élite: " + alt.mapNotNull { idx.move(it)?.name }.joinToString(" · ") + " (rinde menos)", size = 11.sp, color = Pal.Muted)
             }
-            data?.pvp?.get(lg)?.let { ivs ->
-                ivs.best?.let { GbaText("Mejores IV: ${it.ivs} (Nv ${fmtLevel(it.level)}, PC ${it.cp})", size = 12.sp, color = Pal.Muted) }
-                ivs.bestFloor10?.let { GbaText("Con mínimo 10/10/10 (incursión): ${it.ivs} (Nv ${fmtLevel(it.level)}, PC ${it.cp})", size = 12.sp, color = Pal.Muted) }
-            }
         }
     }
 
     if (data != null && data.max.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Batallas Max")
+        // Como las tablas de ataques: tipo en color, nombre y daño a la derecha; abajo, el rápido que carga la barra.
+        MoveTableHeader("daño", "")
         data.max.forEach { m ->
-            GbaText("${m.moveName}: ${m.damage.toInt()} de daño", size = 13.sp)
-            GbaText("Mejor rápido para llenar la barra: ${m.bestFast.name}", size = 12.sp, color = Pal.Muted)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().heightIn(min = 26.dp)) {
+                Box(Modifier.size(8.dp).background(Pal.type(m.type), com.esmeraldago.app.ui.theme.SmallPixelShape))
+                Spacer(Modifier.width(3.dp))
+                GbaText(m.moveName, size = 12.sp, color = if (m.gmax) Pal.Dynamax else Pal.Text, modifier = Modifier.weight(1f))
+                GbaText(m.damage.toInt().toString(), size = 12.sp, modifier = Modifier.width(88.dp), align = androidx.compose.ui.text.style.TextAlign.End)
+                Spacer(Modifier.width(88.dp))
+            }
+            Row(Modifier.padding(start = 12.dp)) { MoveLabel(m.bestFast, s, 11) }
         }
     }
 
     // Hidden Power: 16 variantes iguales salvo el tipo; se muestra una sola.
-    val fast = s.fast.mapNotNull { idx.move(it) }.distinctBy { if (it.id.startsWith("HIDDEN_POWER")) "HP" else it.id }
-    val charged = s.charged.mapNotNull { idx.move(it) }
+    // De mejor a peor: daño por segundo en incursiones (poder / duración).
+    fun pveDps(m: Move) = if (m.durationMs > 0) m.power / (m.durationMs / 1000.0) else m.power
+    val fast = s.fast.mapNotNull { idx.move(it) }.distinctBy { if (it.id.startsWith("HIDDEN_POWER")) "HP" else it.id }.sortedByDescending { pveDps(it) }
+    val charged = s.charged.mapNotNull { idx.move(it) }.sortedByDescending { pveDps(it) }
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Ataques rápidos")
         MoveTableHeader("PvE poder·energía·s", "PvP poder·energía·turnos")
@@ -504,7 +508,7 @@ private fun Battle(s: Species, idx: GameIndex, data: EntryData?) {
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Ataques cargados")
         MoveTableHeader("PvE poder·energía", "PvP poder·energía")
-        charged.sortedByDescending { it.power }.forEach { m -> MoveRow(m, s, "${m.power.toInt()} · ${m.energy}", "${m.pvpPower.toInt()} · ${m.pvpEnergy}") }
+        charged.forEach { m -> MoveRow(m, s, "${m.power.toInt()} · ${m.energy}", "${m.pvpPower.toInt()} · ${m.pvpEnergy}") }
     }
 }
 
@@ -572,7 +576,6 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, gmaxView: Boole
         if (dynamax.isEmpty()) GbaText("Ningún Pokémon de esta familia puede Dinamaxizar.", size = 13.sp, color = Pal.Muted)
         else {
             CenteredCells { dynamax.forEach { cell(it) } }
-            GbaText("Solo los atrapados en batallas Max.", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 4.dp))
         }
     }
 
@@ -587,18 +590,16 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, gmaxView: Boole
     val shadow = idx.shadowOf(idx[s.baseId] ?: base)
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Oscuro")
+        // Solo si existe: tocarla abre la versión oscura.
         if (shadow == null) GbaText("No tiene versión oscura.", size = 13.sp, color = Pal.Muted)
-        else {
-            GbaText("Ataque ×1.2, defensa ×0.83. Del Team GO Rocket o de incursiones oscuras.", size = 13.sp)
-            GbaText("Purificado: +2 a cada IV, aprende Return y sube de nivel más barato (90 % del polvo).", size = 12.sp, color = Pal.Muted)
-        }
+        else CenteredCells { EvoCell(shadow, current = s.id == shadow.id, open) }
     }
 
     // Formas que solo aparecen a mitad del combate (Aegislash Filo, Morpeko Voraz…): forma normal ▶ forma de combate.
     val battle = members.map { m -> m to idx.battleFormsOf(m).filter { b -> battleBaseOf(b, members)?.id == m.id } }.filter { it.second.isNotEmpty() }
     if (battle.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Formas en combate")
-        GbaText("Cambia de forma durante el combate; no se atrapa así.", size = 12.sp, color = Pal.Muted)
+        GbaText("Aparecen solo durante el combate.", size = 12.sp, color = Pal.Muted)
         Tree(listOf(battle.map { (m, _) -> @Composable { cell(m) } }, battle.flatMap { (_, bs) -> bs.map { b -> @Composable { cell(b) } } }))
     }
 
@@ -609,13 +610,13 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, gmaxView: Boole
     val notes = members.mapNotNull { m -> VARIANT_NOTES[m.dex]?.let { m to it } }.distinctBy { it.second }
     if (cosmetics.isNotEmpty() || catalog.isNotEmpty() || notes.isNotEmpty()) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Variantes de aspecto")
-        GbaText("Mismos stats y tipos: rinden igual, salvo algún ataque exclusivo.", size = 12.sp, color = Pal.Muted)
-        notes.forEach { (m, note) -> GbaText(if (members.size > 1) "${m.displayName}: $note" else note, size = 13.sp) }
         if (cosmetics.isNotEmpty()) CenteredCells(Modifier.padding(top = 4.dp)) { cosmetics.forEach { cell(it) } }
         catalog.forEach { (m, variants) ->
             if (catalog.size > 1 || cosmetics.isNotEmpty()) GbaText(m.displayName, size = 13.sp, modifier = Modifier.padding(top = 6.dp))
             CenteredCells(Modifier.padding(top = 4.dp)) { variants.forEach { (label, url) -> VariantCell(m, label, url) } }
         }
+        // Aclaraciones abajo, sin repetir el nombre (es la ficha de este mismo Pokémon).
+        notes.forEach { (_, note) -> GbaText(note, size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 6.dp)) }
     }
 
     WindowBox(Modifier.fillMaxWidth()) {
@@ -624,7 +625,7 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, gmaxView: Boole
         val inRaids = raids.orEmpty().mapNotNull { it.species?.id }.toSet() + raids.orEmpty().mapNotNull { it.species?.baseId }
         GbaText("Dónde: " + reco.whereToGet(s, inRaids), size = 13.sp)
         GbaText("Compañero: ${s.buddyKm} km por caramelo", size = 13.sp)
-        GbaText(if (mine > 0) "Tenés $mine en tu caja" else "No tenés ninguno", size = 13.sp, color = if (mine > 0) Pal.Text else Pal.Muted)
+        GbaText(if (mine > 0) "En la caja: $mine" else "En la caja: ninguno", size = 13.sp, color = if (mine > 0) Pal.Text else Pal.Muted)
     }
 }
 
@@ -705,15 +706,15 @@ private val VARIANT_SPRITES: Map<Int, List<Pair<String, String>>> = run {
 
 /** Particularidades que conviene aclarar (sin sprites para mostrar o además de ellos). */
 private val VARIANT_NOTES = mapOf(
-    327 to "Cada uno tiene su patrón de manchas; solo cambia el aspecto.",
-    666 to "El diseño depende de la región donde se consiguió (Postales).",
-    422 to "Mar Este y Mar Oeste son regionales.",
-    423 to "Mar Este y Mar Oeste son regionales.",
-    585 to "La estación cambia con la temporada de GO.",
-    586 to "La estación cambia con la temporada de GO.",
-    649 to "El disco solo cambia el tipo de Techno Blast.",
+    327 to "Cada Spinda tiene uno de los patrones de manchas de Pokémon GO; no cambia sus stats.",
+    666 to "El diseño depende de la región: en Pokémon GO se obtiene con Postales de esa región.",
+    422 to "Mar Oeste y Mar Este aparecen en distintas regiones del mundo.",
+    423 to "Mar Oeste y Mar Este aparecen en distintas regiones del mundo.",
+    585 to "La estación cambia con la temporada de Pokémon GO.",
+    586 to "La estación cambia con la temporada de Pokémon GO.",
+    649 to "Techno Blast cambia de tipo según el disco.",
     678 to "Macho y hembra aprenden ataques distintos.",
-    999 to "En GO se atrapa en su forma Andante.",
+    999 to "En Pokémon GO aparece en su forma Andante.",
 )
 
 /** Una fila de celdas centrada, que baja de renglón si no entran. */

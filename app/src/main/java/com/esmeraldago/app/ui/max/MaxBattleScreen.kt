@@ -64,9 +64,7 @@ fun MaxBattleScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
         WithGame { idx, reco ->
             val boss = bossId?.let { idx[it] }
             WindowBox(Modifier.fillMaxWidth().padding(8.dp)) {
-                if (boss == null) {
-                    GbaText("Elegí el jefe Dinamax / Gigamax para ver tus mejores opciones.", size = 14.sp)
-                } else Row(verticalAlignment = Alignment.CenterVertically) {
+                if (boss != null) Row(verticalAlignment = Alignment.CenterVertically) {
                     Sprite(boss, 64.dp)
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
@@ -96,22 +94,15 @@ fun MaxBattleScreen(onBack: () -> Unit, onSpecies: (String) -> Unit) {
             }
             val list = rows ?: return@WithGame LoadingBox()
             if (list.isEmpty()) {
-                DialogBox(if (mine) "No tenés Pokémon Dinamax cargados. Marcalos como Dinamax/G-Max al escanear o editar." else "Sin resultados.",
+                DialogBox(if (mine) "Sin Pokémon Dinamax en la caja." else "Sin resultados.",
                     Modifier.padding(8.dp))
                 return@WithGame
             }
-            GbaText(
-                when {
-                    mine -> "Equipo sugerido: 2 atacantes + 1 tanque (Max Guard). Abajo, todos tus Dinamax por daño."
-                    tanks -> "Tanques: aguante (Def × PS) ajustado por lo que resisten del jefe."
-                    else -> "Atacantes: daño de su Max Attack contra ${boss.displayName}."
-                },
-                size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            )
+            // Sin explicación: el rol de cada uno (ATACANTE / TANQUE) va en su fila.
             val teamSize = list.count { it.role.isNotEmpty() }
             LazyColumn(Modifier.fillMaxSize()) {
                 itemsIndexed(list, key = { i, r -> "$i|${r.owned?.uid}|${r.result.species.id}|${r.role}" }) { i, row ->
-                    if (mine && i == teamSize && teamSize > 0) SectionTitle("Todos tus Dinamax", Modifier.padding(horizontal = 8.dp))
+                    if (mine && i == teamSize && teamSize > 0) SectionTitle("Otros Dinamax", Modifier.padding(horizontal = 8.dp))
                     val r = row.result
                     RankRow(if (row.role.isNotEmpty()) 0 else i + 1 - teamSize, r.species, onClick = { onSpecies(r.species.id) },
                         title = (row.owned?.nickname ?: r.displayName),

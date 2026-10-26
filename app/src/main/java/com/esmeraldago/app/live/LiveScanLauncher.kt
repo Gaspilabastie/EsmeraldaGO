@@ -71,7 +71,7 @@ fun rememberLiveScanStarter(): () -> Unit {
             if (e == Lifecycle.Event.ON_RESUME && waitingOverlay) {
                 waitingOverlay = false
                 if (Settings.canDrawOverlays(context)) next()
-                else container.notify("Todavía falta el permiso: buscá EsmeraldaGO en la lista y activalo.")
+                else container.notify("Falta el permiso para mostrar EsmeraldaGO sobre otras apps.")
             }
         }
         lifecycle.addObserver(obs)
@@ -79,8 +79,8 @@ fun rememberLiveScanStarter(): () -> Unit {
     }
 
     if (explainOverlay) YesNoDialog(
-        "Paso 1 de 2: en la lista que se abre buscá EsmeraldaGO (no Pokémon GO) y activá " +
-            "\"Permitir mostrar sobre otras apps\". Después volvé con ◀ y sigue solo. ¿Vamos?",
+        "Paso 1 de 2: en la lista, activar \"Mostrar sobre otras apps\" para EsmeraldaGO (no Pokémon GO) " +
+            "y volver con ◀. ¿Continuar?",
         onYes = {
             explainOverlay = false
             waitingOverlay = true

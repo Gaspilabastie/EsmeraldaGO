@@ -264,10 +264,10 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
             }.sortedByDescending { it.third.second.score }.take(2).forEach { (p, s, rr) ->
                 val (rank, r) = rr
                 val cost = PokeMath.powerUpCost(p.level, 40.0, p.shadow, p.purified, p.lucky)
-                val assumed = if (movesKnown(p)) "" else " (ataques estimados: cargalos para confirmar)"
+                val assumed = if (movesKnown(p)) "" else " (ataques estimados)"
                 out += Advice(
                     AdviceKind.PVE, s, p,
-                    "Subí ${p.nickname ?: s.name} a nivel 40",
+                    "Subir ${p.nickname ?: s.name} a nivel 40",
                     "Atacante ${Types.es(type)} ~#$rank con ${r.fast.name} / ${r.charged.name}$assumed.",
                     priority = (100.0 - rank * 2) / sqrt(costFactor(cost)),
                     cost = cost,
@@ -285,11 +285,11 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
                 .distinctBy { it.species.id }
                 .take(6)
                 .forEach { c ->
-                    val evo = if (c.needsEvolve) "evolucioná a ${c.species.name} y " else ""
-                    val action = if (c.cost.isZero) "ya tiene el nivel justo" else "subilo a nivel ${fmt(c.iv.level)} (PC ${c.iv.cp})"
+                    val evo = if (c.needsEvolve) "evolucionar a ${c.species.name} y " else ""
+                    val action = if (c.cost.isZero) "ya tiene el nivel justo" else "subir a nivel ${fmt(c.iv.level)} (PC ${c.iv.cp})"
                     val moves = when {
                         c.needsEliteTm -> " Requiere MT Élite: ${c.missingMoves.filter { c.species.isElite(it) }.joinToString { idx.move(it)?.name ?: it }}."
-                        c.missingMoves.isNotEmpty() -> " Enseñale: ${c.missingMoves.joinToString { idx.move(it)?.name ?: it }}."
+                        c.missingMoves.isNotEmpty() -> " Ataques por enseñar: ${c.missingMoves.joinToString { idx.move(it)?.name ?: it }}."
                         else -> ""
                     }
                     val estimated = if (c.owned.ivExact) "" else " (IV estimados)"
@@ -297,7 +297,7 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
                         if (c.needsEvolve) AdviceKind.EVOLVE else AdviceKind.PVP, c.species, c.owned,
                         "${league.label}: ${c.owned.nickname ?: c.species.name}",
                         "$evo$action".replaceFirstChar { it.uppercase() } +
-                            ". Meta #${c.metaRank}, IV rank #${c.iv.rank} (${"%.1f".format(c.iv.percentOfBest)}%)$estimated.$moves",
+                            ". Especie #${c.metaRank} en la liga · IV #${c.iv.rank} (${"%.1f".format(c.iv.percentOfBest)} %)$estimated.$moves",
                         priority = c.value / sqrt(costFactor(c.cost)),
                         cost = c.cost.takeUnless { it.isZero },
                         modes = setOf(GameMode.PVP), types = c.species.types.toSet(),
@@ -320,7 +320,7 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
                 AdviceKind.MAX, s, p,
                 "Dinamax: ${p.nickname ?: s.name}${if (p.gigantamax) " (G-Max)" else ""}",
                 "Top #${bestRank.first} atacante Dinamax ${Types.es(bestRank.second)}. " +
-                    (if (p.level < 40) "Subilo a nivel 40 y mejorá su Max Attack." else "Mejorá su Max Attack."),
+                    (if (p.level < 40) "Subir a nivel 40 y mejorar el Max Attack." else "Mejorar el Max Attack."),
                 priority = (80.0 - bestRank.first * 2) / sqrt(costFactor(cost)),
                 cost = cost,
                 modes = setOf(GameMode.MAX), types = setOf(bestRank.second),
@@ -364,7 +364,7 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
     }
 
     fun whereToGet(s: Species, inRaidsNow: Set<String>): String = when {
-        s.id in inRaidsNow || s.baseId in inRaidsNow -> "¡Está en incursiones ahora!"
+        s.id in inRaidsNow || s.baseId in inRaidsNow -> "En incursiones ahora"
         s.shadow && (s.legendary || s.mythical) -> "Incursiones oscuras o Giovanni"
         s.shadow -> "Derrotando al Team GO Rocket"
         s.mythical -> "Investigación especial / evento (mítico)"
@@ -461,7 +461,7 @@ class Recommender(val idx: GameIndex, val maxLevel: Double = 50.0) {
                 if (rs.pvp.isNotEmpty()) add("PvP: " + rs.pvp.joinToString(", "))
                 if (rs.max.isNotEmpty()) add("Dinamax: " + rs.max.entries.joinToString(", ") { "${it.key} #${it.value}" })
                 rs.origins.forEach { add(it) }
-                if (preEvo != null) add("Ya tenés un ${idx[preEvo.speciesId]?.name ?: preEvo.speciesId} (IV ${preEvo.ivPercent}%): ¡evolucionalo!")
+                if (preEvo != null) add("En la caja hay un ${idx[preEvo.speciesId]?.name ?: preEvo.speciesId} (IV ${preEvo.ivPercent} %): conviene evolucionarlo")
                 else add(whereToGet(s, inRaidsNow))
             }
             // Legendarios fuera de rotación y míticos bajan de prioridad: no se pueden buscar a voluntad.

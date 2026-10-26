@@ -132,7 +132,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             val parser = container.scan.parserFor(idx)
             val a = withOverlaysHidden { captureBest(parser) }
             when {
-                a == null -> _status.value = "Todavía no hay imagen de la pantalla."
+                a == null -> _status.value = "Sin imagen de la pantalla todavía."
                 a.result.screen == ScreenType.UNKNOWN -> {
                     // No era la ficha de un Pokémon: se avisa, sin cargarlo como falla ni mostrar el anterior.
                     container.scan.clearLatest()
@@ -316,7 +316,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("EsmeraldaGO está leyendo la pantalla")
-            .setContentText("Tocá la burbuja sobre Pokémon GO para escanear.")
+            .setContentText("Tocar la burbuja sobre Pokémon GO para escanear.")
             .setContentIntent(open)
             .addAction(0, "DETENER", stop)
             .setOngoing(true)

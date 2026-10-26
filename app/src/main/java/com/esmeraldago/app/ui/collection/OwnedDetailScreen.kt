@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.esmeraldago.app.ui.theme.Tag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esmeraldago.app.ui.common.LocalContainer
@@ -62,7 +63,7 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         if (p == null) {
             TitleBar("Pokémon", onBack)
-            DialogBox("Este Pokémon ya no está en tu caja.", Modifier.padding(8.dp))
+            DialogBox("Este Pokémon ya no está en la caja.", Modifier.padding(8.dp))
             return@Column
         }
         WithGame { idx, reco ->
@@ -122,14 +123,26 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                     IvBar("ATQ", p.ivAtk)
                     IvBar("DEF", p.ivDef)
                     IvBar("PS", p.ivSta)
-                    GbaText("IV ${p.ivPercent}%" + if (!p.ivExact) " (estimado: escaneá la valoración para precisarlo)" else "",
-                        size = 12.sp, color = if (p.ivExact) Pal.Text else Pal.Warn)
+                    // Sin valoración, los IV son una estimación: se muestra el rango de las combinaciones posibles.
+                    val range = remember(p) {
+                        if (p.ivExact) null else PokeMath.solveIvs(s, p.cp, idx, hp = p.hp, levels = listOf(p.level),
+                            minIv = if (p.lucky) 12 else if (p.purified) 2 else 0)
+                            .map { (it.ivs.atk + it.ivs.def + it.ivs.sta) * 100 / 45 }.takeIf { it.size > 1 }?.let { it.min() to it.max() }
+                    }
+                    GbaText(
+                        when {
+                            p.ivExact -> "IV ${p.ivPercent} %"
+                            range != null && range.first != range.second -> "IV estimados: ${range.first}–${range.second} %"
+                            else -> "IV estimados: ${p.ivPercent} %"
+                        },
+                        size = 12.sp, color = if (p.ivExact) Pal.Text else Pal.Warn,
+                    )
                 }
 
                 WindowBox(Modifier.fillMaxWidth()) {
                     SectionTitle("Movimientos")
                     val moves = listOfNotNull(idx.move(p.fast)) + p.chargedMoves.mapNotNull { idx.move(it) }
-                    if (moves.isEmpty()) GbaText("Sin cargar: se calcula con sus ataques más comunes. Editalo o escaneá la pantalla del Pokémon.",
+                    if (moves.isEmpty()) GbaText("Ataques no cargados.",
                         size = 13.sp, color = Pal.Muted)
                     moves.forEach { MoveLabel(it, s, 14) }
                 }
@@ -138,16 +151,18 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                     SectionTitle("PvP")
                     when {
                         pvp == null -> GbaText("Calculando…", size = 13.sp)
-                        pvp.isEmpty() -> GbaText("No entra en ninguna liga.", size = 13.sp)
+                        pvp.isEmpty() -> GbaText("Sin liga disponible.", size = 13.sp)
+                        // Una fila por liga, con su color: puesto de la especie, sus IV y hasta dónde llega.
                         else -> pvp.forEach { l ->
-                            GbaText("${l.league.label}${l.formName?.let { " (como $it)" } ?: ""}", size = 15.sp)
-                            GbaText(
-                                "IV rank #${l.iv.rank} (${fmt1(l.iv.percentOfBest)}%) · Nv ${fmtLevel(l.iv.level)} → PC ${l.iv.cp}" +
-                                    (l.metaRank?.let { "\nMeta: #$it (${fmt1(l.metaScore ?: 0.0)})" } ?: "\nFuera del ranking de la liga") +
-                                    if (l.tooHigh) "\nYa pasa el tope de PC de la liga" else "",
-                                size = 12.sp, color = Pal.Muted,
-                            )
-                            Spacer(Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(top = 4.dp)) {
+                                Tag(l.league.label.removePrefix("Liga ").uppercase(), leagueColor(l.league))
+                                GbaText(l.metaRank?.let { "Especie #$it en la liga" } ?: "Especie fuera del ranking", size = 13.sp)
+                            }
+                            l.formName?.let { GbaText("Como $it", size = 12.sp, color = Pal.Muted) }
+                            GbaText("IV #${l.iv.rank} de 4096 · ${fmt1(l.iv.percentOfBest)} % del mejor", size = 12.sp, color = Pal.Muted)
+                            if (l.tooHigh) GbaText("Supera el PC máximo de la liga (${l.league.cap})", size = 12.sp, color = Pal.Warn)
+                            else GbaText("Máximo en la liga: PC ${l.iv.cp} (Nv ${fmtLevel(l.iv.level)})", size = 12.sp, color = Pal.Muted)
                         }
                     }
                 }
@@ -167,7 +182,7 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                                     size = 13.sp,
                                 )
                             }
-                            GbaText("${l.fast} / ${l.charged} (vs top 60 de ${Types.es(l.type)})", size = 11.sp, color = Pal.Muted)
+                            GbaText("${l.fast} / ${l.charged} (contra el top 60 de ${Types.es(l.type)})", size = 11.sp, color = Pal.Muted)
                         }
                     }
                 }
@@ -178,7 +193,7 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                         val c = PokeMath.powerUpCost(p.level, target, p.shadow, p.purified, p.lucky)
                         Labeled("A Nv ${fmtLevel(target)} (PC ${PokeMath.cp(s, target, reco.ivs(p), idx)})", costText(c))
                     }
-                    if (p.level >= 50) GbaText("¡Ya está al máximo!", size = 13.sp)
+                    if (p.level >= 50) GbaText("Nivel máximo alcanzado.", size = 13.sp)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -188,7 +203,7 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
             }
 
             if (confirmDelete) YesNoDialog(
-                "¿Liberar a ${p.nickname ?: s.displayName}? ¡Adiós, ${p.nickname ?: s.displayName}!",
+                "¿Liberar a ${p.nickname ?: s.displayName}?",
                 onYes = {
                     confirmDelete = false
                     val removed = container.collection.delete(p.uid)
@@ -207,4 +222,11 @@ fun costText(c: PowerUpCost) = buildString {
     append("${fmtNum(c.stardust)} polvo")
     if (c.candy > 0) append(" · ${c.candy} caram.")
     if (c.xlCandy > 0) append(" · ${c.xlCandy} XL")
+}
+
+/** Color de cada liga, como en el juego: Super azul, Ultra dorada, Master violeta. */
+private fun leagueColor(l: com.esmeraldago.core.model.League) = when (l) {
+    com.esmeraldago.core.model.League.GREAT -> Pal.Blue
+    com.esmeraldago.core.model.League.ULTRA -> Pal.Gold
+    com.esmeraldago.core.model.League.MASTER -> Pal.Shadow
 }

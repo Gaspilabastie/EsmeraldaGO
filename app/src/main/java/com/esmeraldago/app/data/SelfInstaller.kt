@@ -89,7 +89,7 @@ class UpdatedReceiver : BroadcastReceiver() {
             NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setContentTitle("EsmeraldaGO se actualizó a ${BuildConfig.VERSION_NAME}")
-                .setContentText("Tocá para abrirla.")
+                .setContentText("Tocar para abrir.")
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build(),

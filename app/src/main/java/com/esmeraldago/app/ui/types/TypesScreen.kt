@@ -58,29 +58,20 @@ fun TypesScreen(onBack: () -> Unit) {
                 when (mode) {
                     Mode.ATTACK -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            GbaText("Un ataque de tipo", size = 14.sp); TypeBadge(attack, small = true)
+                            GbaText("Ataque", size = 14.sp); TypeBadge(attack, small = true)
                         }
                         Spacer(Modifier.height(6.dp))
                         AttackMatchups(attack)
                     }
                     Mode.DEFENSE -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            GbaText("Un Pokémon", size = 14.sp); defense.forEach { TypeBadge(it, small = true) }
+                            GbaText("Defensor", size = 14.sp); defense.forEach { TypeBadge(it, small = true) }
                         }
                         Spacer(Modifier.height(6.dp))
                         DefenseMatchups(defense)
                     }
                 }
             }
-            GbaText(
-                "En Pokémon GO: supereficaz ×1.6, poco eficaz ×0.625 y \"inmune\" ×0.39 (no hay inmunidad total). " +
-                    "Con dos tipos se multiplican: ×2.56 si ambos son débiles.",
-                size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(10.dp),
-            )
-            if (mode == Mode.DEFENSE && defense.size == 1) GbaText(
-                "Tocá otro tipo para ver una combinación (${Types.es(defense.first())} + …).",
-                size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp),
-            )
         }
     }
 }

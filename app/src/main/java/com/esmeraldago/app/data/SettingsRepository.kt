@@ -23,8 +23,11 @@ data class Settings(
     /** Con Wi-Fi, bajar e instalar las versiones nuevas solo, desde la pantalla de inicio. */
     val autoUpdate: Boolean = true,
 ) {
-    /** Nivel máximo que puede tener un Pokémon tuyo: entrenador + 10, tope 51 (Mejor Compañero). */
-    val pokemonLevelCap: Double get() = if (trainerLevel <= 0) 51.0 else minOf(51.0, trainerLevel + 10.0)
+    /**
+     * Nivel máximo de un Pokémon al escanear. Ya no se pide el nivel de entrenador: el costo de polvo fija el nivel
+     * casi siempre, y el tope (entrenador + 10) solo descartaba algún nivel en entrenadores bajos.
+     */
+    val pokemonLevelCap: Double get() = 51.0
 }
 
 class SettingsRepository(context: Context) {

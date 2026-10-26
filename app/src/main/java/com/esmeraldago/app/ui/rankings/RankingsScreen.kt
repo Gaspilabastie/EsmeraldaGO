@@ -52,10 +52,34 @@ private enum class Tab(val label: String) { PVE("PvE"), PVP("PvP"), MAX("Dinamax
 
 /** Convención de DialgaDex: tiers cada 10% respecto del #1. */
 /** El tier se mide contra el #1 del ranking COMPLETO (sin filtros): filtrar no sube de tier a nadie. */
-private const val TIER_LEGEND = "Tier (% del #1 del ranking completo, sin filtros, estilo GO Hub): S ≥95 · A+ ≥90 · A ≥85 · B+ ≥80 · B ≥75 · C ≥70 · D <70"
+/**
+ * Por qué ordenar los atacantes PvE. ER (GO Hub, la de siempre) equilibra daño por segundo y aguante; DPS premia
+ * al que pega más rápido aunque caiga pronto; TDO, al que más daño hace antes de caer; DPS×TDO pesa los dos igual.
+ */
+private enum class PveSort(val label: String) { ER("ER"), DPS("DPS"), TDO("TDO"), PRODUCT("DPS×TDO") }
+
+private fun PveSort.of(r: com.esmeraldago.core.calc.PveResult): Double = when (this) {
+    PveSort.ER -> r.score; PveSort.DPS -> r.dps; PveSort.TDO -> r.tdo; PveSort.PRODUCT -> r.dps * r.tdo
+}
+
+private fun PveSort.text(v: Double) = when (this) {
+    PveSort.ER, PveSort.DPS -> fmt1(v); PveSort.TDO -> v.toInt().toString(); PveSort.PRODUCT -> "${(v / 1000).toInt()}k"
+}
+
+/** Fila "AVANZADO" que despliega opciones poco usadas. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Advanced(content: @Composable androidx.compose.foundation.layout.FlowRowScope.() -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.padding(horizontal = 8.dp)) {
+        ToggleChip("Avanzado", open, { open = it })
+        if (open) FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+    }
+}
 
 /**
- * [focus] ("pve:fire:charizard", "pvp:GREAT:medicham", "max:fire:charizard") abre la pestaña y el tipo o liga
+ * [focus] ("pve:fire:charizard", "pvp:GREAT:medicham", "max:fire:charizard", "maxtank::snorlax") abre la pestaña y el tipo o liga
  * indicados, baja hasta ese Pokémon y lo resalta: así se llega desde su entrada de Pokédex.
  */
 @Composable
@@ -63,7 +87,7 @@ fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit, focus: Strin
     val f = focus?.split(":")
     val focusId = f?.getOrNull(2)
     // Todo el estado de filtros vive acá: cambiar de pestaña no lo reinicia.
-    var tab by rememberSaveable { mutableStateOf(when (f?.getOrNull(0)) { "pvp" -> Tab.PVP; "max" -> Tab.MAX; else -> Tab.PVE }) }
+    var tab by rememberSaveable { mutableStateOf(when (f?.getOrNull(0)) { "pvp" -> Tab.PVP; "max", "maxtank" -> Tab.MAX; else -> Tab.PVE }) }
     var pveType by rememberSaveable { mutableStateOf(f?.takeIf { it[0] == "pve" }?.getOrNull(1) ?: "fighting") }
     var pveShadow by rememberSaveable { mutableStateOf(true) }
     var pveMega by rememberSaveable { mutableStateOf(true) }
@@ -74,7 +98,7 @@ fun RankingsScreen(onBack: () -> Unit, onSpecies: (String) -> Unit, focus: Strin
     var pvpShadow by rememberSaveable { mutableStateOf(true) }
     var pvpAllowElite by rememberSaveable { mutableStateOf(true) }
     var maxType by rememberSaveable { mutableStateOf(f?.takeIf { it[0] == "max" }?.getOrNull(1) ?: "fighting") }
-    var maxTanks by rememberSaveable { mutableStateOf(false) }
+    var maxTanks by rememberSaveable { mutableStateOf(f?.getOrNull(0) == "maxtank") }
     // "No Budget": legendarios, singulares y ultraentes. Prendido = se ven (como los demás chips).
     var nonBudget by rememberSaveable { mutableStateOf(true) }
 
@@ -111,13 +135,15 @@ private fun PveTab(
     val (full, busy) = rememberComputed(idx, type, level) {
         PveCalc.topAttackers(type, idx, level, includeShadow = true, includeMega = true, includeElite = true, limit = 400)
     }
-    val results = full?.filter { r ->
+    var sort by rememberSaveable { mutableStateOf(PveSort.ER) }
+    val sorted = full?.sortedByDescending { sort.of(it) }
+    val results = sorted?.filter { r ->
         (shadow || !r.species.shadow) && (mega || !r.species.mega) && (elite || !r.usesElite) && (nonBudget || !r.species.nonBudget)
     }?.let { takeWithFocus(it, 60, focusId) { r -> r.species.id } }
 
     val list = results.orEmpty()
     val listState = rememberFocusScroll(list.indexOfFirst { it.species.id == focusId })
-    val top = full?.firstOrNull()?.score ?: 1.0
+    val top = sorted?.firstOrNull()?.let { sort.of(it) } ?: 1.0
     // El % de DPS sí es contra el #1 que se ve (el #1 de la lista siempre muestra 100%).
     val topDps = list.firstOrNull()?.dps ?: 1.0
     // Los filtros son los primeros ítems de la lista: se van con el scroll (en pantallas chicas no tapan los resultados).
@@ -131,17 +157,16 @@ private fun PveTab(
                     ToggleChip("Legado", elite, setElite)
                     ToggleChip("No Budget", nonBudget, setNonBudget)
                 }
-                GbaText(
-                    "Atacantes ${Types.es(type)} · Nv ${fmtLevel(level)} 15/15/15 · contra jefe débil a ${Types.es(type)}" +
-                        (if (busy) "  …" else "") + "\n$TIER_LEGEND",
-                    size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp),
-                )
-                if (results == null) LoadingBox()
+                Advanced {
+                    GbaText("Ordenar por", size = 13.sp, modifier = Modifier.align(Alignment.CenterVertically))
+                    PveSort.entries.forEach { s -> ToggleChip(s.label, sort == s, { sort = s }) }
+                }
+                if (results == null || busy) LoadingBox()
             }
         }
         itemsIndexed(list, key = { _, r -> "${r.species.id}|${r.fast.id}|${r.charged.id}" }) { i, r ->
             RankRow(i + 1, r.species, onClick = { onSpecies(r.species.id) }, highlight = r.species.id == focusId,
-                trailing = { RankValue(r.score, top, fmt1(r.score)) }) {
+                trailing = { RankValue(sort.of(r), top, sort.text(sort.of(r))) }) {
                 Column {
                     MoveLabel(r.fast, r.species)
                     MoveLabel(r.charged, r.species)
@@ -183,11 +208,6 @@ private fun PvpTab(
                     ToggleChip("Legado", allowElite, setAllowElite)
                     ToggleChip("No Budget", nonBudget, setNonBudget)
                 }
-                GbaText(
-                    "Ranking PvPoke (general) · ${league.label} (≤${league.cap} PC)" +
-                        (if (!allowElite) "\nSin los que dependen de un ataque de legado (MT Élite)." else "") + "\n$TIER_LEGEND",
-                    size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp),
-                )
             }
         }
         itemsIndexed(rows, key = { _, r -> r.second.id }) { _, (rank, r, s) ->
@@ -212,7 +232,8 @@ private fun MaxTab(
     tanks: Boolean, setTanks: (Boolean) -> Unit,
     nonBudget: Boolean, setNonBudget: (Boolean) -> Unit,
 ) {
-    val settings by LocalContainer.current.settings.state.collectAsState()
+    val container = LocalContainer.current
+    val settings by container.settings.state.collectAsState()
     val (full, busy) = rememberComputed(idx, type, tanks, settings.rankLevel, settings.maxMoveLevel) {
         if (tanks) MaxCalc.topTanks(idx, settings.rankLevel, limit = 200)
         else MaxCalc.topAttackers(type, idx, settings.rankLevel, settings.maxMoveLevel, limit = 200)
@@ -232,13 +253,13 @@ private fun MaxTab(
                     ToggleChip("No Budget", nonBudget, setNonBudget)
                 }
                 if (!tanks) TypePicker(type, setType)
-                GbaText(
-                    (if (tanks) "Mayor Def × PS a nivel ${fmtLevel(settings.rankLevel)}"
-                    else "Max Attack Nv ${settings.maxMoveLevel} · G-Max y Max exclusivos usan siempre su ataque") +
-                        (if (busy) "  …" else "") + "\n$TIER_LEGEND",
-                    size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                )
-                if (results == null) LoadingBox()
+                if (!tanks) Advanced {
+                    GbaText("Nivel del Max Attack", size = 13.sp, modifier = Modifier.align(Alignment.CenterVertically))
+                    (1..3).forEach { l ->
+                        ToggleChip("Nv $l", settings.maxMoveLevel == l, { container.settings.update { it.copy(maxMoveLevel = l) } })
+                    }
+                }
+                if (results == null || busy) LoadingBox()
             }
         }
         itemsIndexed(list, key = { _, r -> "${r.species.id}|${r.gigantamax}|${r.fast.id}" }) { i, r ->

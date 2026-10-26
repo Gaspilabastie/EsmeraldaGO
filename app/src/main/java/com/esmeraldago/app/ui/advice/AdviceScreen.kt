@@ -83,23 +83,22 @@ fun AdviceScreen(onBack: () -> Unit, onOwned: (String) -> Unit, onSpecies: (Stri
                         }
                         Spacer(Modifier.height(4.dp))
                         TypePicker(type ?: "", { t -> type = if (t == type) null else t })
-                        GbaText(
-                            (if (type != null) "Tipo: ${Types.es(type!!)} (tocalo de nuevo para quitar el filtro)" else "Todos los tipos") +
-                                (if (tab == AdviceTab.POWER && !reco.allowXl) " · Modo sin caramelos XL" else "") +
-                                (if (busy) "  …" else ""),
+                        // El tipo elegido ya se ve marcado en la grilla: solo se aclara lo que no se ve.
+                        if ((tab == AdviceTab.POWER && !reco.allowXl) || busy) GbaText(
+                            listOfNotNull("Sin caramelos XL".takeIf { tab == AdviceTab.POWER && !reco.allowXl }, "…".takeIf { busy }).joinToString(" · "),
                             size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         )
                         when {
-                            advice == null -> LoadingBox("El PROF. ABEDUL está pensando")
+                            advice == null -> LoadingBox("Calculando")
                             all.isEmpty() -> {
                                 DialogBox(
-                                    if (owned.isEmpty()) "Cargá tus Pokémon para recibir consejos personalizados."
-                                    else "No encontré nada urgente para subir. ¡Tus Pokémon están bien!",
+                                    if (owned.isEmpty()) "Sin Pokémon en la caja."
+                                    else "Ningún Pokémon necesita mejoras.",
                                     Modifier.padding(8.dp),
                                 )
                                 if (owned.isEmpty()) Row(Modifier.padding(horizontal = 8.dp)) { PixelButton("ESCANEAR", onScan) }
                             }
-                            list.isEmpty() -> DialogBox("Nada con estos filtros.", Modifier.padding(8.dp))
+                            list.isEmpty() -> DialogBox("Sin resultados con estos filtros.", Modifier.padding(8.dp))
                         }
                     }
                 }

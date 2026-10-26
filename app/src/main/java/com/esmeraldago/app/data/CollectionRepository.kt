@@ -54,7 +54,7 @@ class CollectionRepository(context: Context, private val scope: CoroutineScope) 
             // Nunca descartar en silencio: se aparta el archivo y se avisa.
             val aside = File(base.parentFile, "collection.json.corrupt-${System.currentTimeMillis()}")
             base.renameTo(aside)
-            _error.value = "Tu colección no se pudo leer (copia guardada en ${aside.name}). Empezás con la caja vacía."
+            _error.value = "No se pudo leer la caja (copia guardada en ${aside.name}). Se empieza con la caja vacía."
         } finally {
             _loaded.value = true
         }

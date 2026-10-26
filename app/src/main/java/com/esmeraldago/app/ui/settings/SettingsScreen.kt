@@ -72,43 +72,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Labeled("Generados", SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(d.generatedAt)))
                     Labeled("Origen", if (container.game.usingDownloadedData) "Descargados" else "Incluidos en la app")
                 }
-                GbaText("Actualizá cuando cambie la temporada, salgan movimientos nuevos o se rebalanceen ataques.",
-                    size = 12.sp, color = Pal.Muted)
+                GbaText("Conviene actualizar al cambiar la temporada o los ataques.", size = 12.sp, color = Pal.Muted)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                     PixelButton(if (updating) "ACTUALIZANDO…" else "ACTUALIZAR", { container.game.update() }, enabled = !updating)
                     if (container.game.usingDownloadedData) PixelButton("RESTAURAR", { container.game.resetToBundled() }, color = Pal.Muted)
                 }
                 status?.let { GbaText(it, size = 13.sp) }
                 GbaText("Descarga ~22 MB (PvPoke + Game Master).", size = 11.sp, color = Pal.Muted)
-            }
-
-            WindowBox(Modifier.fillMaxWidth()) {
-                SectionTitle("Entrenador")
-                GbaText("Nivel de entrenador (opcional)", size = 14.sp)
-                var text by androidx.compose.runtime.saveable.rememberSaveable {
-                    androidx.compose.runtime.mutableStateOf(settings.trainerLevel.takeIf { it > 0 }?.toString() ?: "")
-                }
-                androidx.compose.foundation.layout.Box(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp).inputFrame()
-                ) {
-                    if (text.isEmpty()) GbaText("ej. 42", size = 15.sp, color = Pal.Muted)
-                    androidx.compose.foundation.text.BasicTextField(
-                        text,
-                        { v ->
-                            text = v.filter(Char::isDigit).take(2)
-                            container.settings.update { it.copy(trainerLevel = text.toIntOrNull()?.coerceIn(1, 80) ?: 0) }
-                        },
-                        textStyle = com.esmeraldago.app.ui.theme.gbaStyle(16.sp), singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                GbaText(
-                    "Acota el nivel máximo de tus Pokémon al escanear (tu nivel + 10, máx. 50). No es imprescindible: " +
-                        "el nivel lo fija sobre todo el costo de polvo del botón POWER UP.",
-                    size = 12.sp, color = Pal.Muted,
-                )
             }
 
             WindowBox(Modifier.fillMaxWidth()) {
@@ -119,19 +89,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                         ToggleChip("Nv ${l.toInt()}", settings.rankLevel == l, { container.settings.update { it.copy(rankLevel = l) } })
                     }
                 }
-                GbaText("Nivel máximo para PvP y consejos", size = 14.sp)
+                GbaText("Nivel máximo al subir Pokémon (PvP y consejos)", size = 14.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(40.0 to "40 (sin caramelos XL)", 50.0 to "50", 51.0 to "51 (mejor compañero)").forEach { (lvl, label) ->
+                    listOf(40.0 to "40 (sin caramelos XL)", 50.0 to "50", 51.0 to "51 (Mejor Compañero)").forEach { (lvl, label) ->
                         ToggleChip(label, settings.pvpMaxLevel == lvl, {
                             container.settings.update { it.copy(pvpMaxLevel = lvl) }; container.game.refreshRecommender()
                         })
-                    }
-                }
-                GbaText("Con 40, los rankings de IV y los consejos no asumen que tenés caramelos XL.", size = 12.sp, color = Pal.Muted)
-                GbaText("Nivel de Max Attack (rankings Dinamax)", size = 14.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (1..3).forEach { l ->
-                        ToggleChip("Nv $l", settings.maxMoveLevel == l, { container.settings.update { it.copy(maxMoveLevel = l) } })
                     }
                 }
             }
@@ -141,7 +104,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 GbaText(
                     "• Rankings PvP y movesets: PvPoke (licencia MIT)\n" +
                         "• Game Master: PokeMiners\n" +
-                        "• Incursiones actuales: LeekDuck vía ScrapedDuck\n" +
+                        "• Incursiones y eventos: LeekDuck vía ScrapedDuck\n" +
                         "• Sprites: PokeAPI (Pokémon Esmeralda / Negro y Blanco)\n" +
                         "• Fuente: Galmuri11 de Lee Minseo (OFL)\n" +
                         "• Fórmula PvE: DPS/TDO \"comprehensive\" de GamePress\n\n" +
@@ -173,7 +136,7 @@ private fun AppUpdateBox() {
         when (val s = state) {
             UpdateState.Idle -> {}
             UpdateState.Checking -> GbaText("Buscando…", size = 13.sp)
-            UpdateState.UpToDate -> GbaText("Tenés la última versión.", size = 13.sp)
+            UpdateState.UpToDate -> GbaText("Versión al día.", size = 13.sp)
             is UpdateState.Failed -> GbaText(s.message, size = 13.sp, color = Pal.Red)
             is UpdateState.Available -> ReleaseInfo(s.release)
             is UpdateState.Downloading -> {
@@ -196,8 +159,8 @@ private fun AppUpdateBox() {
         ToggleChip("Actualizar sola con Wi-Fi", settings.autoUpdate, { v -> container.settings.update { it.copy(autoUpdate = v) } },
             Modifier.padding(top = 6.dp))
         GbaText(
-            "Se instala encima de la actual: no perdés tu colección. La primera vez Android pide permitir que " +
-                "EsmeraldaGO instale apps y confirmar; después se actualiza sin preguntar.",
+            "Se instala sobre la versión actual, sin perder datos. La primera vez Android pide permiso para instalar; " +
+                "después se actualiza sin preguntar.",
             size = 11.sp, color = Pal.Muted,
         )
     }
@@ -226,12 +189,12 @@ private fun BackupBox() {
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching { container.collection.importJson(context.contentResolver.openInputStream(uri)!!.use { it.reader().readText() }) }
-            .onSuccess { n -> container.notify(if (n == 0) "Esa copia no tenía Pokémon nuevos." else "Se sumaron $n Pokémon de la copia.") }
-            .onFailure { container.notify("Ese archivo no es una copia de EsmeraldaGO.") }
+            .onSuccess { n -> container.notify(if (n == 0) "La copia no tenía Pokémon nuevos." else "Se agregaron $n Pokémon de la copia.") }
+            .onFailure { container.notify("El archivo elegido no es una copia de seguridad de EsmeraldaGO.") }
     }
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Copia de seguridad")
-        GbaText("Guardá tu caja en un archivo para no perderla o pasarla a otro teléfono.", size = 12.sp, color = Pal.Muted)
+        GbaText("Guarda la caja en un archivo, para restaurarla o pasarla a otro teléfono.", size = 12.sp, color = Pal.Muted)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
             PixelButton("GUARDAR COPIA", { save.launch("esmeraldago-caja.json") }, enabled = owned.isNotEmpty())
             PixelButton("CARGAR COPIA", { load.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, color = Pal.Muted)
@@ -256,15 +219,15 @@ private fun FeedbackBox() {
     }
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Reportar o sugerir")
-        GbaText("Abre GitHub con el reporte ya armado (versión y teléfono); lo revisás y lo enviás con tu cuenta.",
+        GbaText("Avisar un error o proponer una mejora. Se abre GitHub con la versión y el modelo de teléfono ya cargados.",
             size = 12.sp, color = Pal.Muted)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.padding(top = 6.dp)) {
             PixelButton("REPORTAR BUG", {
-                open("Bug", "", "bug", "**Qué pasó:**\n\n**Qué esperabas:**\n\n**Pasos para repetirlo:**\n1. \n")
+                open("Bug", "", "bug", "**Qué pasó:**\n\n**Qué se esperaba:**\n\n**Pasos para repetirlo:**\n1. \n")
             }, color = Pal.Red)
             PixelButton("SUGERIR", {
-                open("Idea", "", "enhancement", "**Qué te gustaría:**\n\n**Para qué lo usarías:**\n")
+                open("Idea", "", "enhancement", "**Idea:**\n\n**Para qué serviría:**\n")
             }, color = Pal.Gold)
         }
     }
@@ -289,24 +252,18 @@ private fun LiveScanBox() {
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Escaneo en vivo")
         Labeled("Accesibilidad", if (enabled) "Activa" else "Inactiva")
+        // Un solo control: Android no deja que una app active su servicio de accesibilidad; se hace en Ajustes.
         GbaText(
-            "Con el servicio de accesibilidad activo, la app baja sola la ficha para leer los ataques y la vuelve a subir, " +
-                "y oculta la burbuja cuando salís de Pokémon GO. No lee el contenido de otras apps.",
+            "Permite bajar la ficha para leer los ataques y ocultar la burbuja fuera de Pokémon GO. Se activa en " +
+                "Ajustes › Accesibilidad › EsmeraldaGO. Automatizar acciones en el juego va contra los términos de Niantic.",
             size = 12.sp, color = Pal.Muted,
         )
-        ToggleChip("Bajar solo hasta los ataques", settings.autoScroll, { v -> container.settings.update { it.copy(autoScroll = v) } })
         Row(Modifier.padding(top = 6.dp)) {
-            PixelButton(if (enabled) "AJUSTES DE ACCESIBILIDAD" else "ACTIVAR", {
+            PixelButton(if (enabled) "DESACTIVAR" else "ACTIVAR", {
                 context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
             })
         }
-        GbaText(
-            "Buscá \"EsmeraldaGO: escaneo en vivo\" en Apps instaladas. Si Android no te deja activarlo: Ajustes → Apps → " +
-                "EsmeraldaGO → ⋮ → Permitir configuración restringida. Ojo: los términos de Niantic prohíben automatizar " +
-                "el juego; un deslizamiento en la ficha es inofensivo, pero el riesgo no es cero.",
-            size = 11.sp, color = Pal.Muted,
-        )
     }
 }
 

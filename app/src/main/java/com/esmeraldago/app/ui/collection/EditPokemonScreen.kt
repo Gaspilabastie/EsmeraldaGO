@@ -104,7 +104,7 @@ fun EditPokemonScreen(uid: String?, onBack: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
                         if (s != null) Sprite(d, s, 64.dp)
                         Spacer(Modifier.width(8.dp))
-                        GbaText(s?.let { "${dexLabel(it.dex)} ${it.name}  ▼" } ?: "▶ Tocá para elegir la especie", size = 16.sp)
+                        GbaText(s?.let { "${dexLabel(it.dex)} ${it.name}  ▼" } ?: "▶ Elegir especie", size = 16.sp)
                     }
                 }
 
@@ -118,7 +118,6 @@ fun EditPokemonScreen(uid: String?, onBack: () -> Unit) {
 
                 WindowBox(Modifier.fillMaxWidth()) {
                     SectionTitle("IV")
-                    if (original == null && !d.ivExact) GbaText("Si no los sabés, cargá PC (y PS/nivel) y tocá CALCULAR IV.", size = 12.sp, color = Pal.Muted)
                     IvStepper("Ataque", d.ivAtk) { draft = d.copy(ivAtk = it) }
                     IvStepper("Defensa", d.ivDef) { draft = d.copy(ivDef = it) }
                     IvStepper("PS", d.ivSta) { draft = d.copy(ivSta = it) }
@@ -127,8 +126,8 @@ fun EditPokemonScreen(uid: String?, onBack: () -> Unit) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         PixelButton("CALCULAR NIVEL", {
                             message = when {
-                                s == null -> "Elegí la especie primero."
-                                cp == null -> "Cargá el PC primero."
+                                s == null -> "Falta la especie."
+                                cp == null -> "Falta el PC."
                                 else -> PokeMath.solveIvs(s, cp, idx, hp = hpText.toIntOrNull(), appraisal = Ivs(d.ivAtk, d.ivDef, d.ivSta))
                                     .firstOrNull()?.let { levelText = fmtLevel(it.level); "Nivel ${fmtLevel(it.level)}" }
                                     ?: "No hay nivel con ese PC e IV."
@@ -136,8 +135,8 @@ fun EditPokemonScreen(uid: String?, onBack: () -> Unit) {
                         }, color = Pal.Blue)
                         PixelButton("CALCULAR IV", {
                             message = when {
-                                s == null -> "Elegí la especie primero."
-                                cp == null -> "Cargá el PC primero."
+                                s == null -> "Falta la especie."
+                                cp == null -> "Falta el PC."
                                 else -> {
                                     val c = PokeMath.solveIvs(s, cp, idx, hp = hpText.toIntOrNull(), levels = level?.let { listOf(it) },
                                         minIv = maxOf(if (d.lucky) 12 else 0, if (d.purified) 2 else 0))
@@ -146,7 +145,7 @@ fun EditPokemonScreen(uid: String?, onBack: () -> Unit) {
                                     else {
                                         draft = d.copy(ivAtk = pick.ivs.atk, ivDef = pick.ivs.def, ivSta = pick.ivs.sta, ivExact = c.size == 1)
                                         if (level == null) levelText = fmtLevel(pick.level)
-                                        if (c.size == 1) "IV exactos: ${pick.ivs}" else "${c.size} combinaciones posibles; se eligió ${pick.ivs} (cargá la valoración para precisar)."
+                                        if (c.size == 1) "IV exactos: ${pick.ivs}" else "${c.size} combinaciones posibles; elegida: ${pick.ivs}."
                                     }
                                 }
                             }
@@ -186,7 +185,7 @@ fun EditPokemonScreen(uid: String?, onBack: () -> Unit) {
                 if (problems.isNotEmpty()) GbaText("Para guardar: " + problems.joinToString(", ") + ".", size = 12.sp, color = Pal.Red)
                 PixelButton("GUARDAR", {
                     container.collection.upsert(current)
-                    container.notify("¡${current.nickname ?: s?.name ?: "Pokémon"} guardado en la CAJA!")
+                    container.notify("${current.nickname ?: s?.name ?: "Pokémon"} guardado en la caja.")
                     onBack()
                 }, Modifier.fillMaxWidth(), enabled = problems.isEmpty())
             }
@@ -233,7 +232,7 @@ private fun MoveSlot(label: String, move: Move?, s: Species, onClick: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GbaText(label, size = 13.sp, color = Pal.Muted, modifier = Modifier.width(84.dp))
-        if (move != null) MoveLabel(move, s, 14) else GbaText("—  (tocá para elegir)", size = 13.sp)
+        if (move != null) MoveLabel(move, s, 14) else GbaText("— Elegir", size = 13.sp)
     }
 }
 
@@ -241,7 +240,7 @@ private fun MoveSlot(label: String, move: Move?, s: Species, onClick: () -> Unit
 private fun MovePickerDialog(options: List<Move>, s: Species, onDismiss: () -> Unit, onPick: (Move?) -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         WindowBox(Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
-            GbaText("Elegí el movimiento", size = 16.sp)
+            GbaText("Elegir movimiento", size = 16.sp)
             LazyColumn {
                 items(options, key = { it.id }) { m ->
                     Box(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { onPick(m) }.padding(vertical = 6.dp)) { MoveLabel(m, s, 15) }

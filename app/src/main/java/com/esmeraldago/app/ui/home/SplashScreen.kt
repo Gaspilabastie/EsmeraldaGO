@@ -59,7 +59,7 @@ fun SplashScreen(ready: Boolean, status: String, onDone: () -> Unit) {
         }
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             val shown = blink || !ready
-            GbaText(if (ready) "TOCÁ PARA CONTINUAR" else status, size = 16.sp,
+            GbaText(if (ready) "TOCAR PARA CONTINUAR" else status, size = 16.sp,
                 color = if (shown) Color(0xFFF8F8F8) else Color.Transparent, shadow = if (shown) Color(0xFF0C3B37) else Color.Transparent)
             Spacer(Modifier.height(10.dp))
             GbaText("compañero de Pokémon GO", size = 12.sp, color = Color(0xFFBFEBDD), shadow = Color(0xFF0C3B37))

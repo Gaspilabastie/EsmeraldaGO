@@ -79,25 +79,19 @@ fun ScanScreen(onBack: () -> Unit) {
         WithGame { idx, _ ->
             Box(Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize()) {
-                    item {
-                        DialogBox(
-                            when {
-                                pending > 0 -> "Leyendo capturas… ($processed listas, faltan $pending)"
-                                drafts.isEmpty() && failures.isEmpty() -> "Elegí capturas de tus Pokémon. El juego tiene que estar en INGLÉS."
-                                else -> "Revisá lo detectado: los marcados con ■ se guardan. Los IV sin confirmar quedan desmarcados."
-                            },
-                            Modifier.padding(8.dp),
-                        )
-                    }
+                    // El juego puede estar en inglés o en español: el lector entiende los dos.
+                    when {
+                        pending > 0 -> "Leyendo capturas: $processed de ${processed + pending}."
+                        drafts.isNotEmpty() -> "Se guardan los marcados con ■."
+                        else -> null
+                    }?.let { item { DialogBox(it, Modifier.padding(8.dp)) } }
                     item {
                         // Escaneo en vivo: burbuja flotante sobre Pokémon GO (como Poke Genie).
                         WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
                             GbaText("EN VIVO SOBRE POKéMON GO", size = 16.sp)
                             GbaText(
-                                if (liveRunning) "La burbuja está activa. Tocala sobre un Pokémon para leerlo; mantenela apretada para ver el panel. " +
-                                    "En modo continuo, deslizá por tu colección y se van agregando solos."
-                                else "Sin capturas: una burbuja flotante lee la pantalla del juego. Android te va a pedir permiso para " +
-                                    "mostrarse sobre otras apps y para capturar la pantalla.",
+                                if (liveRunning) "Burbuja activa sobre Pokémon GO."
+                                else "Una burbuja flotante lee la ficha del Pokémon dentro del juego, sin capturas.",
                                 size = 12.sp, color = Pal.Muted,
                             )
                             Spacer(Modifier.heightIn(min = 6.dp))
@@ -109,19 +103,6 @@ fun ScanScreen(onBack: () -> Unit) {
                                     PixelButton("EMPEZAR EN VIVO", startLive, color = Pal.Dynamax)
                                 }
                             }
-                        }
-                    }
-                    item {
-                        WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp).clickable { showHelp = !showHelp }) {
-                            GbaText((if (showHelp) "▼ " else "▶ ") + "¿Qué capturas sacar?", size = 15.sp)
-                            if (showHelp) GbaText(
-                                "1. Pantalla del Pokémon, scrolleada hasta ver PC, PS, el botón POWER UP con su costo de polvo " +
-                                    "y los ataques.\n" +
-                                    "2. Su VALORACIÓN (menú ☰ → Appraise) mostrando las 3 barras: con esta los IV son exactos.\n" +
-                                    "Podés elegirlas en cualquier orden: se emparejan por PC y PS.\n" +
-                                    "Tip: desde la galería, Compartir → EsmeraldaGO.",
-                                size = 13.sp,
-                            )
                         }
                     }
                     if (failures.isNotEmpty()) item {
@@ -149,7 +130,7 @@ fun ScanScreen(onBack: () -> Unit) {
                     }, Modifier.weight(1f))
                     PixelButton(if (n > 0) "GUARDAR $n" else "GUARDAR", {
                         val saved = session.save(container.collection)
-                        container.notify("¡$saved POKéMON enviados a la CAJA!")
+                        container.notify("$saved Pokémon guardados en la caja.")
                         onBack()
                     }, Modifier.weight(1f), color = Pal.Blue, enabled = n > 0 && pending == 0)
                 }
@@ -159,7 +140,7 @@ fun ScanScreen(onBack: () -> Unit) {
                 val d = drafts.firstOrNull { it.key == key } ?: return@let
                 val options = d.result.speciesOptions
                 SpeciesPickerDialog(
-                    idx, if (options.size > 1) "Posibles: ${options.take(4).joinToString { it.name }}" else "Elegí la especie",
+                    idx, if (options.size > 1) "Posibles: ${options.take(4).joinToString { it.name }}" else "Elegir especie",
                     preferred = options,
                     onDismiss = { pickingFor = null },
                 ) { s ->
@@ -171,7 +152,7 @@ fun ScanScreen(onBack: () -> Unit) {
     }
 
     if (confirmExit) YesNoDialog(
-        "Hay Pokémon sin guardar. ¿Salir igual? (quedan acá para cuando vuelvas)",
+        "Hay Pokémon sin guardar. ¿Salir? Quedan pendientes para la próxima vez.",
         onYes = { confirmExit = false; onBack() },
         onNo = { confirmExit = false },
     )
@@ -230,8 +211,8 @@ private fun DraftCard(
                 GbaText(
                     when {
                         d.sources > 1 -> "Detalle + valoración"
-                        d.result.screen == ScreenType.APPRAISAL -> "Solo valoración (faltan los ataques)"
-                        else -> "Solo detalle (falta la valoración)"
+                        d.result.screen == ScreenType.APPRAISAL -> "Solo valoración: faltan los ataques"
+                        else -> "Solo ficha: falta la valoración"
                     },
                     size = 12.sp, color = Pal.Muted,
                 )
@@ -248,7 +229,7 @@ private fun DraftCard(
             s == null || c.isEmpty() -> Unit
             d.result.ivExact -> GbaText("IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%), exactos", size = 15.sp)
             else -> {
-                GbaText("IV ${d.result.ivRangeText} · ${c.size} combinaciones posibles: elegí una o agregá la captura de valoración.",
+                GbaText("IV ${d.result.ivRangeText} · ${c.size} combinaciones. La valoración las reduce a una.",
                     size = 12.sp, color = Pal.Warn)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     c.sortedByDescending { it.ivs.total }.take(8).forEach { cand ->
