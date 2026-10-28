@@ -261,6 +261,29 @@ private fun LiveScanBox() {
             if (!enabled) PixelButton("ACTIVAR", { openAccessibilityPage(context) })
             else ToggleChip("Escaneo asistido", settings.autoScroll, { v -> container.settings.update { it.copy(autoScroll = v) } })
         }
+        LiveTestExport()
+    }
+}
+
+/**
+ * TEMPORAL, mientras se ajusta el escaneo en vivo: guarda el registro de las pruebas (pasos, imágenes y texto leído)
+ * en un .zip donde se elija, por ejemplo Google Drive, y lo borra del teléfono para que la próxima prueba empiece limpia.
+ */
+@Composable
+private fun LiveTestExport() {
+    val container = LocalContainer.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching { context.contentResolver.openOutputStream(uri)!!.use { com.esmeraldago.app.live.LiveTestLog.exportZip(context, it) } }
+            .onSuccess { n -> com.esmeraldago.app.live.LiveTestLog.clear(context); container.notify("Prueba exportada: $n imágenes.") }
+            .onFailure { container.notify("No se pudo exportar la prueba: ${it.message}") }
+    }
+    val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())
+    Row(Modifier.padding(top = 6.dp)) {
+        PixelButton("EXPORTAR PRUEBA", { save.launch("esmeraldago-prueba-$stamp.zip") }, color = Pal.Muted)
     }
 }
 

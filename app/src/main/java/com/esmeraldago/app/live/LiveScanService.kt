@@ -150,7 +150,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
      * hecha sin la compu conectada se revisa después con adb. No se muestra en la app; se guardan las últimas
      * [MAX_FRAMES] imágenes.
      */
-    private val testDir by lazy { java.io.File(getExternalFilesDir(null), "live").apply { mkdirs() } }
+    private val testDir get() = LiveTestLog.dir(this)
     private val stamp get() = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
 
     private fun log(msg: String) {
@@ -158,13 +158,18 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         runCatching { java.io.File(testDir, "log.txt").appendText("$stamp $msg\n") }
     }
 
-    private fun saveFrame(bmp: android.graphics.Bitmap) = runCatching {
+    /** Guarda la imagen y devuelve su nombre (para guardar al lado el texto que leyó el OCR). */
+    private fun saveFrame(bmp: android.graphics.Bitmap): String? = runCatching {
         val frames = java.io.File(testDir, "frames").apply { mkdirs() }
         val name = java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(java.util.Date()) + ".jpg"
         java.io.File(frames, name).outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, it) }
         log("imagen $name")
-        frames.listFiles()?.sortedBy { it.name }?.dropLast(MAX_FRAMES)?.forEach { it.delete() }
-    }
+        // Se conservan las últimas imágenes, cada una con su texto.
+        frames.listFiles { f -> f.extension == "jpg" }?.sortedBy { it.name }?.dropLast(LiveTestLog.MAX_FRAMES)?.forEach {
+            it.delete(); java.io.File(frames, it.nameWithoutExtension + ".json").delete()
+        }
+        name
+    }.getOrNull()
 
     private fun summary(a: OcrScanner.Analysis?): String = a?.result?.let { r ->
         "${r.screen} ${r.species?.id ?: "?"} PC ${r.cp ?: "?"}${if (r.cpInferred) "*" else ""} PS ${r.hp ?: "?"} " +
@@ -304,9 +309,11 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     private suspend fun analyzeFrame(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
         val bmp = capturer?.grab() ?: return null
-        withContext(Dispatchers.IO) { saveFrame(bmp) }
+        val frame = withContext(Dispatchers.IO) { saveFrame(bmp) }
         return try {
-            container.ocr.analyze(bmp, parser)
+            container.ocr.analyze(bmp, parser).also { a ->
+                frame?.let { name -> withContext(Dispatchers.IO) { LiveTestLog.saveOcr(this@LiveScanService, name, a.lines, a.bars) } }
+            }
         } catch (t: Throwable) {
             log("error al leer el fotograma: ${t.javaClass.simpleName}: ${t.message}")
             null
@@ -469,8 +476,6 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     companion object {
         private const val CHANNEL = "live_scan"
         private const val NOTIFICATION_ID = 42
-        /** Imágenes de prueba que se conservan (~100 KB cada una). */
-        private const val MAX_FRAMES = 300
         const val ACTION_START = "com.esmeraldago.live.START"
         const val ACTION_STOP = "com.esmeraldago.live.STOP"
         private const val EXTRA_CODE = "code"
