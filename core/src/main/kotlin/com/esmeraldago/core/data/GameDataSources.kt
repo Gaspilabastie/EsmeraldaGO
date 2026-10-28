@@ -109,7 +109,7 @@ object GameDataSources {
 
     /**
      * Textos del juego (i18n de PokeMiners: {"data": [clave, texto, clave, texto…]}); se quedan solo los nombres
-     * de ataques y especies (son ~70.000 textos en total).
+     * de ataques, especies y objetos (son ~70.000 textos en total).
      */
     fun parseTexts(file: File): Map<String, String> {
         val out = HashMap<String, String>()
@@ -122,7 +122,7 @@ object GameDataSources {
                     val k = r.nextString()
                     if (!r.hasNext()) break
                     val v = r.nextString()
-                    if (k.startsWith("move_name_") || k.startsWith("pokemon_name_")) out[k] = v
+                    if (k.startsWith("move_name_") || k.startsWith("pokemon_name_") || (k.startsWith("item_") && k.endsWith("_name"))) out[k] = v
                 }
                 r.endArray()
             }

@@ -60,6 +60,8 @@ data class Species(
     val buddyKm: Int = 3,
     /** Nombre en el juego en español, solo cuando difiere ("Great Tusk" → "Colmilargo"). */
     val nameEs: String? = null,
+    /** Qué cuesta cada evolución, según el Game Master. */
+    val evoCosts: List<EvoCost> = emptyList(),
 ) {
     /** Requiere MT Élite (legado / evento). */
     fun isElite(moveId: String) = moveId in elite
@@ -80,6 +82,23 @@ data class Species(
     /** Puede Dinamaxizar (la marca roja); [dynamax] además incluye a quienes solo entran a combates Max. */
     val canDynamax: Boolean get() = dynamax && !maxWithoutDynamax
 }
+
+/**
+ * Requisitos para evolucionar a [to] (id de PvPoke), tal como los trae el Game Master. [item] es el nombre del objeto
+ * en el texto oficial en español ("Piedra Sinnoh", "Módulo Cebo Musgoso"); [conditions], frases cortas ("De noche").
+ */
+@Serializable
+data class EvoCost(
+    val to: String,
+    val candy: Int = 0,
+    val item: String? = null,
+    /** Cuántos del objeto hacen falta, si son varios (999 Monedas de Gimmighoul). */
+    val itemCount: Int? = null,
+    val buddyKm: Double? = null,
+    /** No cuesta caramelos si el Pokémon fue intercambiado (Kadabra, Machoke…). */
+    val freeIfTraded: Boolean = false,
+    val conditions: List<String> = emptyList(),
+)
 
 @Serializable
 data class Move(

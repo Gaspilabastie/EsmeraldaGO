@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,6 +67,7 @@ import com.esmeraldago.core.calc.PokeMath
 import com.esmeraldago.core.calc.PveCalc
 import com.esmeraldago.core.calc.PveResult
 import com.esmeraldago.core.calc.Tier
+import com.esmeraldago.core.model.EvoCost
 import com.esmeraldago.core.model.League
 import com.esmeraldago.core.model.Move
 import com.esmeraldago.core.model.Species
@@ -75,12 +77,12 @@ import com.esmeraldago.core.reco.Recommender
 private enum class Page(val label: String) { SUMMARY("INFO"), BATTLE("COMBATE"), FORMS("FORMAS") }
 
 /**
- * "Su clase": los rivales de su misma categoría. Se dejan afuera las categorías más fuertes a las que no pertenece:
- * las megas si no es mega, los oscuros si no es oscuro, y los legendarios, singulares y ultraentes si no lo es.
- * (Es la idea de la referencia "Budget" de DialgaDex.) Un oscuro legendario compite contra todos menos las megas.
+ * "Su clase": los rivales de su misma categoría. Se dejan afuera las megas si no es mega y los legendarios,
+ * singulares y ultraentes si no lo es (la idea de la referencia "Budget" de DialgaDex). Los oscuros compiten junto
+ * a los normales, como en Pokébattler y DialgaDex.
  */
 private fun sameClass(s: Species, o: Species) =
-    (s.mega || !o.mega) && (s.shadow || s.mega || !o.shadow) && (s.nonBudget || !o.nonBudget)
+    (s.mega || !o.mega) && (s.nonBudget || !o.nonBudget)
 
 /**
  * Cómo rinde como atacante de un tipo: el puesto general y tier de RANKINGS (ranking completo), el puesto en su
@@ -88,7 +90,7 @@ private fun sameClass(s: Species, o: Species) =
  * o mejor (≥70 % del #1 general).
  */
 private class PveRole(
-    val type: String, val rank: Int, val classRank: Int, val tier: Tier, val pct: Int, val bestName: String,
+    val type: String, val species: Species, val rank: Int, val classRank: Int, val tier: Tier, val pct: Int, val bestName: String,
     val result: PveResult, val withoutElite: PveResult?,
 ) {
     val relevant get() = classRank <= 10 || tier.ordinal <= Tier.B.ordinal
@@ -97,8 +99,33 @@ private class PveRole(
 /** Un movimiento Max: su puesto (general y en su clase) entre los atacantes Max de su tipo y el rápido que carga la barra. */
 private class MaxRole(
     val moveName: String, val type: String, val gmax: Boolean, val damage: Double, val bestFast: Move,
-    val rank: Int?, val classRank: Int?, val tier: Tier?,
+    val rank: Int?, val classRank: Int?, val tier: Tier?, val species: Species,
 )
+
+/**
+ * Lo que el Pokémon puede llegar a ser: él mismo y todas sus evoluciones, con sus ramas (Eevee). Un oscuro evoluciona
+ * a oscuro. Los puestos de INFO son los del mejor de estos, que casi siempre es la última fase; si una fase anterior
+ * rinde más (en algunas ligas por el límite de PC), queda esa.
+ */
+private fun reachable(s: Species, idx: GameIndex): List<Species> {
+    if (s.mega) return listOf(s)
+    val out = mutableListOf(s)
+    val seen = HashSet<String>()
+    val queue = ArrayDeque(listOf(idx[s.baseId] ?: s))
+    while (queue.isNotEmpty()) {
+        for (id in queue.removeFirst().evolutions) {
+            if (!seen.add(id)) continue
+            val e = idx[id] ?: continue
+            queue.add(e)
+            val v = if (s.shadow) idx.shadowOf(e) else e
+            if (v != null && v.released) out += v
+        }
+    }
+    return out
+}
+
+/** "Charizard: " delante de lo que es de una evolución y no del Pokémon de la entrada. */
+private fun via(s: Species, who: Species) = if (who.id == s.id) "" else "${who.displayName}: "
 
 /** "#50" o "#50 · #12 en su clase" cuando el puesto en su clase es distinto. */
 private fun ranks(rank: Int?, classRank: Int?): String =
@@ -107,7 +134,7 @@ private fun ranks(rank: Int?, classRank: Int?): String =
 private class PvpIvs(val best: PokeMath.PvpIvResult?, val bestFloor10: PokeMath.PvpIvResult?)
 
 /** Puesto entre los tanques Dinamax (Def × PS), como en RANKINGS › Dinamax › Tanques. */
-private class TankRole(val rank: Int, val classRank: Int, val tier: Tier)
+private class TankRole(val rank: Int, val classRank: Int, val tier: Tier, val species: Species)
 
 private class EntryData(val pve: List<PveRole>, val max: List<MaxRole>, val tank: TankRole?)
 
@@ -165,39 +192,48 @@ fun SpeciesDetailScreen(id: String, onBack: () -> Unit, onSpecies: (String) -> U
 }
 
 private fun compute(s: Species, idx: GameIndex, level: Double, maxLevel: Int, pvpMaxLevel: Double): EntryData {
-    // PvE: solo los tipos de SUS ataques cargados. El puesto es el de RANKINGS (ranking completo): así coincide con
-    // la fila que se resalta al tocarlo.
-    val pve = PveCalc.usableCharged(s, idx).map { it.type }.distinct().mapNotNull { type ->
+    // Para cada tipo, liga y rol, el mejor de lo que puede llegar a ser ([reachable]).
+    val line = reachable(s, idx)
+
+    // PvE: los tipos de los ataques cargados de cualquiera de la línea. El puesto es el de RANKINGS (ranking completo):
+    // así coincide con la fila que se resalta al tocarlo.
+    val pve = line.flatMap { c -> PveCalc.usableCharged(c, idx).map { it.type } }.distinct().mapNotNull { type ->
         val full = PveCalc.topAttackers(type, idx, level, limit = 400)
         val ranked = full.distinctBy { it.species.id }
-        val i = ranked.indexOfFirst { it.species.id == s.id }
-        if (i < 0) return@mapNotNull null
+        val (c, i) = line.map { it to ranked.indexOfFirst { r -> r.species.id == it.id } }.filter { it.second >= 0 }
+            .minByOrNull { it.second } ?: return@mapNotNull null
         val r = ranked[i]
         val top = full.first()
-        val classRank = ranked.filter { sameClass(s, it.species) }.indexOfFirst { it.species.id == s.id } + 1
-        PveRole(type, i + 1, classRank, Tier.of(r.score, top.score), (r.score / top.score * 100).toInt(), top.species.displayName, r,
-            full.firstOrNull { it.species.id == s.id && !it.usesElite }.takeIf { r.usesElite })
+        val classRank = ranked.filter { sameClass(c, it.species) }.indexOfFirst { it.species.id == c.id } + 1
+        PveRole(type, c, i + 1, classRank, Tier.of(r.score, top.score), (r.score / top.score * 100).toInt(), top.species.displayName, r,
+            full.firstOrNull { it.species.id == c.id && !it.usesElite }.takeIf { r.usesElite })
     }.sortedBy { it.rank }
 
-    // Dinamax: un renglón por movimiento Max (el G-Max no depende del rápido; el rápido solo llena la barra).
-    val max = if ((!s.dynamax && !s.gigantamax) || s.shadow || s.mega) emptyList() else {
-        listOfNotNull(false.takeIf { s.dynamax }, true.takeIf { s.gigantamax }).flatMap { gmax ->
-            PveCalc.usableFast(s, idx).map { f -> MaxCalc.evaluate(s, gmax, f, idx, level, maxMoveLevel = maxLevel) }
-        }.groupBy { it.maxMoveName to it.gigantamax }.values.map { g ->
-            val best = g.maxBy { it.fastDps }
-            val list = MaxCalc.topAttackers(best.maxMoveType, idx, level, maxLevel, limit = 200)
-            val i = list.indexOfFirst { it.species.id == s.id && it.gigantamax == best.gigantamax }
-            val ci = list.filter { sameClass(s, it.species) }.indexOfFirst { it.species.id == s.id && it.gigantamax == best.gigantamax }
-            MaxRole(best.maxMoveName, best.maxMoveType, best.gigantamax, best.maxDamage, best.fast,
-                (i + 1).takeIf { i >= 0 }, (ci + 1).takeIf { ci >= 0 }, if (i >= 0) Tier.of(list[i].maxDamage, list.first().maxDamage) else null)
-        }.sortedWith(compareBy(nullsLast()) { it.rank })
-    }
+    // Dinamax: un renglón por tipo de movimiento Max (el G-Max no depende del rápido; el rápido solo llena la barra).
+    val maxLine = line.filter { (it.dynamax || it.gigantamax) && !it.shadow && !it.mega }
+    val lists = HashMap<String, List<MaxCalc.MaxResult>>()
+    val max = maxLine.flatMap { c ->
+        listOfNotNull(false.takeIf { c.dynamax }, true.takeIf { c.gigantamax }).flatMap { gmax ->
+            PveCalc.usableFast(c, idx).map { f -> MaxCalc.evaluate(c, gmax, f, idx, level, maxMoveLevel = maxLevel) }
+        }
+    }.groupBy { Triple(it.species.id, it.maxMoveName, it.gigantamax) }.values.map { g ->
+        val best = g.maxBy { it.fastDps }
+        val c = best.species
+        val list = lists.getOrPut(best.maxMoveType) { MaxCalc.topAttackers(best.maxMoveType, idx, level, maxLevel, limit = 200) }
+        val i = list.indexOfFirst { it.species.id == c.id && it.gigantamax == best.gigantamax }
+        val ci = list.filter { sameClass(c, it.species) }.indexOfFirst { it.species.id == c.id && it.gigantamax == best.gigantamax }
+        MaxRole(best.maxMoveName, best.maxMoveType, best.gigantamax, best.maxDamage, best.fast,
+            (i + 1).takeIf { i >= 0 }, (ci + 1).takeIf { ci >= 0 }, if (i >= 0) Tier.of(list[i].maxDamage, list.first().maxDamage) else null, c)
+    }.groupBy { it.type to it.gmax }.values.map { roles -> roles.minWith(compareBy(nullsLast()) { it.rank }) }
+        .sortedWith(compareBy(nullsLast()) { it.rank })
 
-    val tank = if ((!s.dynamax && !s.gigantamax) || s.shadow || s.mega) null else {
+    val tank = if (maxLine.isEmpty()) null else {
         val tanks = MaxCalc.topTanks(idx, level, limit = 400).distinctBy { it.species.id }
-        val i = tanks.indexOfFirst { it.species.id == s.id }
-        val ci = tanks.filter { sameClass(s, it.species) }.indexOfFirst { it.species.id == s.id }
-        if (i < 0) null else TankRole(i + 1, ci + 1, Tier.of(tanks[i].bulk, tanks.first().bulk))
+        maxLine.map { it to tanks.indexOfFirst { t -> t.species.id == it.id } }.filter { it.second >= 0 }.minByOrNull { it.second }
+            ?.let { (c, i) ->
+                val ci = tanks.filter { sameClass(c, it.species) }.indexOfFirst { it.species.id == c.id }
+                TankRole(i + 1, ci + 1, Tier.of(tanks[i].bulk, tanks.first().bulk), c)
+            }
     }
     return EntryData(pve, max, tank)
 }
@@ -302,6 +338,7 @@ private fun ShinyToggle(on: Boolean, modifier: Modifier, small: Boolean) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Boolean, onRanking: (String) -> Unit) {
+    val line = remember(s.id) { reachable(s, idx) }
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Incursiones y gimnasios")
         when {
@@ -310,13 +347,13 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
             data.pve.none { it.relevant } -> GbaText("No se destaca como atacante. Sus mejores puestos:", size = 13.sp, color = Pal.Muted)
             else -> {
                 data.pve.filter { it.relevant }.take(4).forEach { r ->
-                    RankingLink({ onRanking("pve:${r.type}:${s.id}") }) {
+                    RankingLink({ onRanking("pve:${r.type}:${r.species.id}") }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TierBadge(r.tier)
                             TypeBadge(r.type, small = true)
                             GbaText(ranks(r.rank, r.classRank), size = 13.sp, maxLines = 2)
                         }
-                        GbaText(movesText(s, r.result.fast, r.result.charged), size = 12.sp, color = Pal.Muted)
+                        GbaText(via(s, r.species) + movesText(r.species, r.result.fast, r.result.charged), size = 12.sp, color = Pal.Muted)
                     }
                 }
             }
@@ -327,8 +364,10 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
                 if (data.pve.any { it.relevant }) GbaText("En otros tipos:", size = 12.sp, color = Pal.Muted)
                 weak.forEach {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier.clickable(onClickLabel = "Ver en el ranking") { onRanking("pve:${it.type}:${s.id}") }) {
-                        TypeBadge(it.type, small = true); GbaText(ranks(it.rank, it.classRank), size = 12.sp, color = Pal.Muted)
+                        modifier = Modifier.clickable(onClickLabel = "Ver en el ranking") { onRanking("pve:${it.type}:${it.species.id}") }) {
+                        TypeBadge(it.type, small = true)
+                        GbaText(ranks(it.rank, it.classRank) + if (it.species.id != s.id) " (${it.species.displayName})" else "",
+                            size = 12.sp, color = Pal.Muted)
                     }
                 }
             }
@@ -338,28 +377,32 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Combates de entrenador")
         run {
-            val ranked = League.entries.mapNotNull { lg -> idx.pvpRank(lg, s.id)?.let { lg to it } }
+            // Por liga, el mejor de la línea: a veces una fase anterior entra mejor por el límite de PC.
+            val ranked = League.entries.mapNotNull { lg ->
+                line.mapNotNull { c -> idx.pvpRank(lg, c.id)?.let { c to it } }.minByOrNull { it.second.first }?.let { lg to it }
+            }
             // Las megas solo se permiten en algunas copas (como Master: Edición Mega), que no tienen ranking acá.
             if (ranked.isEmpty()) GbaText(if (s.mega) "Sin ranking: las megas solo se permiten en algunas copas." else "No compite en ninguna liga.",
                 size = 13.sp, color = Pal.Muted)
-            ranked.forEach { (lg, r) ->
-                RankingLink({ onRanking("pvp:${lg.name}:${s.id}") }) {
+            ranked.forEach { (lg, cr) ->
+                val (c, r) = cr
+                RankingLink({ onRanking("pvp:${lg.name}:${c.id}") }) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         TierBadge(Tier.of(r.second.score, idx.pvpRanking(lg).firstOrNull()?.score ?: 0.0))
-                        val classRank = idx.pvpRanking(lg).mapNotNull { idx[it.id] }.filter { sameClass(s, it) }.indexOfFirst { it.id == s.id } + 1
+                        val classRank = idx.pvpRanking(lg).mapNotNull { idx[it.id] }.filter { sameClass(c, it) }.indexOfFirst { it.id == c.id } + 1
                         GbaText("${lg.label.removePrefix("Liga ")} ${ranks(r.first, classRank.takeIf { it > 0 })}", size = 13.sp, maxLines = 2)
                     }
-                    GbaText(r.second.moveset.mapNotNull { idx.move(it)?.name }.joinToString(" · "), size = 12.sp, color = Pal.Muted)
+                    GbaText(via(s, c) + r.second.moveset.mapNotNull { idx.move(it)?.name }.joinToString(" · "), size = 12.sp, color = Pal.Muted)
                 }
             }
-            val missing = League.entries.filter { idx.pvpRank(it, s.id) == null }
+            val missing = League.entries.filter { lg -> ranked.none { it.first == lg } }
             if (ranked.isNotEmpty() && missing.isNotEmpty()) GbaText("No compite en: " + missing.joinToString(", ") { it.label.removePrefix("Liga ") },
                 size = 12.sp, color = Pal.Muted)
         }
     }
 
     val base = idx[s.baseId] ?: s
-    if (base.dynamax || base.gigantamax) WindowBox(Modifier.fillMaxWidth()) {
+    if (line.any { (idx[it.baseId] ?: it).let { b -> b.dynamax || b.gigantamax } }) WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Batallas Max")
         when {
             s.shadow -> GbaText("Los Pokémon oscuros no pueden Dinamaxizar.", size = 13.sp, color = Pal.Muted)
@@ -368,20 +411,22 @@ private fun Summary(s: Species, idx: GameIndex, data: EntryData?, gmaxView: Bool
             else -> {
                 // Los dos roles siempre: atacante (por cada ataque Max; en la vista Gigamax, solo el G-Max) y tanque.
                 data.max.filter { !gmaxView || it.gmax }.forEach { m ->
-                    RankingLink({ onRanking("max:${m.type}:${s.id}") }) {
+                    RankingLink({ onRanking("max:${m.type}:${m.species.id}") }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             m.tier?.let { TierBadge(it) }
                             TypeBadge(m.type, small = true)
                             GbaText("Atacante · ${m.moveName}" + ranks(m.rank, m.classRank).let { if (it.isEmpty()) "" else " · $it" }, size = 13.sp, maxLines = 2)
                         }
+                        if (m.species.id != s.id) GbaText(m.species.displayName, size = 12.sp, color = Pal.Muted)
                     }
                 }
                 data.tank?.let { t ->
-                    RankingLink({ onRanking("maxtank::${s.id}") }) {
+                    RankingLink({ onRanking("maxtank::${t.species.id}") }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TierBadge(t.tier)
                             GbaText("Tanque · ${ranks(t.rank, t.classRank)}", size = 13.sp, maxLines = 2)
                         }
+                        if (t.species.id != s.id) GbaText(t.species.displayName, size = 12.sp, color = Pal.Muted)
                     }
                 }
             }
@@ -410,8 +455,17 @@ private fun RankingLink(onClick: () -> Unit, content: @Composable () -> Unit) {
 private fun movesText(s: Species, fast: Move, charged: Move) =
     listOf(fast, charged).joinToString(" + ") { it.name + if (s.isElite(it.id)) " (LEGADO)" else "" }
 
+/** Qué cuesta llegar a esta etapa, en renglones cortos: "50 caramelos", "Piedra Sinnoh", "De noche". */
+private fun evoLines(c: EvoCost): List<String> = buildList {
+    if (c.candy > 0) add("${c.candy} caramelos")
+    if (c.freeIfTraded) add("Gratis si se intercambió")
+    c.item?.let { add(if (c.itemCount != null) "${c.item} ×${c.itemCount}" else it) }
+    c.buddyKm?.let { add("${it.toInt()} km de compañero") }
+    addAll(c.conditions)
+}
+
 @Composable
-private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit, gmax: Boolean = false) {
+private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit, gmax: Boolean = false, cost: EvoCost? = null) {
     val target = if (gmax) e.id + GMAX_SUFFIX else e.id
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -425,6 +479,11 @@ private fun EvoCell(e: Species, current: Boolean, onSpecies: (String) -> Unit, g
         val sub = if (gmax) "Gigamax" else subLabel(e)
         sub?.let { GbaText(it, size = 9.sp, color = if (gmax) Pal.Dynamax else if (e.mega) Pal.Blue else Pal.Muted, maxLines = 2,
             align = androidx.compose.ui.text.style.TextAlign.Center) }
+        // Sin límite de renglones: "Módulo Cebo Musgoso" o "Con el teléfono boca abajo" bajan enteros, nunca cortados.
+        cost?.let { c ->
+            GbaText(evoLines(c).joinToString("\n"), size = 9.sp, color = Pal.Muted, maxLines = 8,
+                align = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 2.dp))
+        }
     }
 }
 
@@ -568,11 +627,13 @@ private fun Forms(s: Species, idx: GameIndex, reco: Recommender, gmaxView: Boole
     val members = stages.flatten()
     fun isCurrent(e: Species) = !gmaxView && (e.id == s.id || (s.shadow && e.id == s.baseId))
     val cell: @Composable (Species) -> Unit = { e -> EvoCell(e, current = isCurrent(e), open) }
+    // Lo que cuesta llegar a cada etapa (Game Master), debajo de ella.
+    val costTo = members.flatMap { it.evoCosts }.associateBy { it.to }
 
     WindowBox(Modifier.fillMaxWidth()) {
         SectionTitle("Evolución y formas")
         if (members.size == 1) GbaText("No evoluciona ni tiene otras formas.", size = 13.sp, color = Pal.Muted)
-        else Tree(stages.map { stage -> stage.map { e -> @Composable { cell(e) } } })
+        else Tree(stages.map { stage -> stage.map { e -> @Composable { EvoCell(e, current = isCurrent(e), open, cost = costTo[e.id]) } } })
     }
 
     val withMegas = members.map { it to idx.megasOf(it).filter { m -> m.baseId == it.id } }.filter { it.second.isNotEmpty() }

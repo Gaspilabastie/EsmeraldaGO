@@ -474,7 +474,9 @@ fun TypePicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier 
             types.maxOf { measurer.measure(Types.es(it).uppercase(), gbaStyle(11.sp)).size.width }.toDp()
         }
         // Lo que queda para el texto: separación 2 + caja de selección 3 por lado + insignia (borde 1 + relleno 2 por lado).
-        fun room(cols: Int) = maxWidth / cols - 14.dp
+        // Margen de 8 %: con tamaños de letra fraccionarios los glifos pixelados se redondean hacia arriba
+        // en el teléfono real (moto g54: "ELÉCTRICO" salía cortado aunque la medición decía que entraba).
+        fun room(cols: Int) = (maxWidth / cols - 14.dp) * 0.92f
         val fit = (room(6) / longest).coerceAtMost(1f)
         val cols = if (fit >= 0.72f) 6 else 3
         val textSize = 11.sp * if (cols == 6) fit else (room(3) / longest).coerceAtMost(1f)

@@ -1,5 +1,6 @@
 package com.esmeraldago.core.data
 
+import com.esmeraldago.core.model.EvoCost
 import com.esmeraldago.core.model.GameData
 import com.esmeraldago.core.model.League
 import com.esmeraldago.core.model.Move
@@ -46,6 +47,8 @@ class GameDataBuilder {
          */
         val overrideDynamax = HashSet<Pair<String, String?>>()
         val overrideGmax = HashSet<Pair<String, String?>>()
+        /** (pokemonId, form?) -> sus "evolutionBranch" (a qué evoluciona y qué cuesta). */
+        val evoBranches = HashMap<Pair<String, String?>, JsonArray>()
     }
 
     /** Están en Pokémon GO aunque PvPoke los marque como no lanzados (contrastado con onemorecatch.site, 19/10/2026). */
@@ -165,6 +168,7 @@ class GameDataBuilder {
                     else -> (data.obj("pokemonSettings") ?: data.obj("pokemonExtendedSettings"))?.let { ps ->
                         val pid = ps.str("pokemonId") ?: ps.str("uniqueId") ?: return@let
                         val form = ps.str("form")?.ifBlank { null }
+                        ps["evolutionBranch"]?.takeIf { it.isJsonArray }?.let { out.evoBranches[pid to form] = it.asJsonArray }
                         ps["breadOverrides"]?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { o ->
                             val mode = o.asJsonObject.str("breadMode") ?: return@forEach
                             when {
@@ -272,6 +276,16 @@ class GameDataBuilder {
         val gmaxIds = miners.gmax.mapNotNull { (key, vn) -> resolve(key.first, key.second)?.let { it to vn } }.toMap()
         val allowedGmaxIds = resolveAll(if (perPokemon) miners.overrideGmax else miners.allowedGmax)
 
+        // Costos de evolución por especie de PvPoke. Una forma concreta (MEOWTH_GALARIAN) tiene su propia entrada;
+        // la genérica (MEOWTH, sin forma) solo se usa si no hay otra para esa especie.
+        val evoById = HashMap<String, List<EvoCost>>()
+        miners.evoBranches.entries.sortedBy { it.key.second == null }.forEach { (key, branches) ->
+            val id = resolve(key.first, key.second) ?: return@forEach
+            if (id in evoById) return@forEach
+            evoById[id] = branches.mapNotNull { b -> evoCost(b.asJsonObject, spanish) { p, f -> resolve(p, f) } }
+                .filter { it.to != id }.distinctBy { it.to }
+        }
+
         return raw.mapNotNull { p ->
             val id = p.str("speciesId") ?: return@mapNotNull null
             val tags = p["tags"]?.asJsonArray?.map { it.asString }.orEmpty()
@@ -329,8 +343,37 @@ class GameDataBuilder {
                 // Solo si difiere (Paradox, Código Cero…): casi todos se llaman igual en español.
                 nameEs = p.int("dex")?.let { spanish["pokemon_name_%04d".format(it)] }
                     ?.takeIf { it != (p.str("speciesName") ?: id).substringBefore(" (") },
+                // Un oscuro evoluciona igual que el normal (a su versión oscura); las megas no evolucionan.
+                evoCosts = if (mega) emptyList() else evoById[baseId].orEmpty()
+                    .map { c -> if (shadow) c.copy(to = c.to + "_shadow") else c }.filter { !shadow || it.to in ids },
             )
         }
+    }
+
+    /** Una rama de "evolutionBranch" del Game Master; null si es una megaevolución o no se reconoce el destino. */
+    private fun evoCost(b: JsonObject, spanish: Map<String, String>, resolve: (String, String?) -> String?): EvoCost? {
+        if (b.has("temporaryEvolution")) return null
+        val to = resolve(b.str("evolution") ?: return null, b.str("form")) ?: return null
+        fun itemName(item: String) = spanish["item_${item.removePrefix("ITEM_").lowercase()}_name"] ?: item
+        val conditions = buildList {
+            if (b.bool("mustBeBuddy") == true && b.double("kmBuddyDistanceRequirement") == null) add("De compañero")
+            if (b.bool("onlyDaytime") == true) add("De día")
+            if (b.bool("onlyNighttime") == true) add("De noche")
+            if (b.bool("onlyDuskPeriod") == true) add("Al atardecer")
+            if (b.bool("onlyFullMoon") == true) add("Con luna llena")
+            if (b.bool("onlyUpsideDown") == true) add("Con el teléfono boca abajo")
+            when (b.str("genderRequirement")) { "FEMALE" -> add("Solo hembras"); "MALE" -> add("Solo machos") }
+            if (b.has("questDisplay")) add("Con una investigación")
+        }
+        return EvoCost(
+            to = to,
+            candy = b.int("candyCost") ?: 0,
+            item = (b.str("evolutionItemRequirement") ?: b.str("lureItemRequirement"))?.let(::itemName),
+            itemCount = b.int("evolutionItemRequirementCost"),
+            buddyKm = b.double("kmBuddyDistanceRequirement"),
+            freeIfTraded = b.bool("noCandyCostViaTrade") == true,
+            conditions = conditions,
+        )
     }
 
     private fun parseRankings(input: InputStream): List<PvpRank> =
@@ -389,6 +432,7 @@ class GameDataBuilder {
         private fun JsonObject.str(k: String): String? = get(k)?.takeIf { it.isJsonPrimitive }?.asString
         private fun JsonObject.int(k: String): Int? = get(k)?.takeIf { it.isJsonPrimitive }?.asDouble?.toInt()
         private fun JsonObject.double(k: String): Double? = get(k)?.takeIf { it.isJsonPrimitive }?.asDouble
+        private fun JsonObject.bool(k: String): Boolean? = get(k)?.takeIf { it.isJsonPrimitive }?.asBoolean
         private fun JsonObject.strList(k: String): List<String> =
             get(k)?.takeIf { it.isJsonArray }?.asJsonArray?.map { it.asString }.orEmpty()
     }

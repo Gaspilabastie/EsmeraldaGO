@@ -36,6 +36,13 @@ import com.esmeraldago.app.ui.common.LocalContainer
 import com.esmeraldago.app.ui.common.SearchField
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.SpriteUrl
+import com.esmeraldago.app.ui.common.ChampionRibbon
+import com.esmeraldago.app.ui.common.EMERALD_BATTLE_BALLS
+import com.esmeraldago.app.ui.common.EMERALD_RIBBONS
+import com.esmeraldago.app.ui.common.TeamOfSix
+import com.esmeraldago.app.R
+import com.esmeraldago.app.ui.common.PLATINUM_MENU_ICONS
+import com.esmeraldago.app.ui.common.PlatinumBag
 import com.esmeraldago.app.ui.common.WithGame
 import com.esmeraldago.app.ui.common.displayName
 import com.esmeraldago.app.ui.common.rememberComputed
@@ -59,22 +66,31 @@ import java.util.Locale
 /** Sprites de objetos del juego (PokeAPI): se bajan y quedan en caché, no están en el repositorio. */
 private const val ITEMS = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/"
 
-private class Shortcut(val label: String, val route: String, val item: String)
+private fun item(name: String) = "$ITEMS$name.png"
+
+/**
+ * [icon]: URL del sprite o recurso propio (los íconos dibujados para la app); [recolor], el recorte o armado que
+ * necesita el original para leerse sobre la baldosa.
+ */
+private class Shortcut(val label: String, val route: String, val icon: Any, val recolor: coil.transform.Transformation? = null)
+
+/** Espalda de Klink en Negro y Blanco: el ícono de Opciones (un engranaje del propio juego). */
+private const val KLINK_BACK = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/back/599.png"
 
 private val MAIN = listOf(
-    Shortcut("RANKINGS", "rankings", "vs-seeker"),
-    Shortcut("TIPOS", "types", "tm-case"),
-    Shortcut("POKéDEX", "pokedex", "poke-ball"),
+    Shortcut("RANKINGS", "rankings", EMERALD_RIBBONS, ChampionRibbon),
+    Shortcut("TIPOS", "types", R.drawable.icon_types_pentagram),
+    // La Pokédex no es un objeto (no está en PokeAPI): el sprite de Negro y Blanco del archivo de Bulbapedia.
+    Shortcut("POKéDEX", "pokedex", "https://archives.bulbagarden.net/media/upload/9/9f/Key_Pok%C3%A9dex_m_Sprite.png"),
 )
 
 private val MORE = listOf(
-    Shortcut("MI CAJA", "collection", "great-ball"),
-    Shortcut("INCURSIONES", "raids", "wishing-piece"),
-    Shortcut("DINAMAX", "max", "dynamax-band"),
-    Shortcut("EQUIPOS", "teams", "vs-recorder"),
-    Shortcut("QUÉ ATRAPAR", "advice", "razz-berry"),
-    // Opciones ya está arriba a la derecha (Pokénav); su lugar lo ocupa la Guía (Teachy TV, la "guía" de Rojo Fuego).
-    Shortcut("GUÍA", "guide", "teachy-tv"),
+    Shortcut("MI CAJA", "collection", R.drawable.icon_box_open),
+    Shortcut("INCURSIONES", "raids", item("premier-ball")),
+    Shortcut("DINAMAX", "max", item("max-mushrooms")),
+    Shortcut("EQUIPOS", "teams", EMERALD_BATTLE_BALLS, TeamOfSix),
+    Shortcut("QUÉ ATRAPAR", "advice", item("golden-razz-berry")),
+    Shortcut("GUÍA", "guide", item("rule-book")),
 )
 
 /**
@@ -89,7 +105,7 @@ fun HomeScreen(onOpen: (String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TitleBar("EsmeraldaGO") {
             Box(Modifier.size(44.dp).clickable(onClickLabel = "Opciones") { onOpen("settings") }, contentAlignment = Alignment.Center) {
-                SpriteUrl("${ITEMS}pal-pad.png", 36.dp, "Opciones")
+                SpriteUrl(KLINK_BACK, 36.dp, "Opciones")
             }
         }
         Column(
@@ -124,7 +140,7 @@ private fun LookupCard(idx: GameIndex, onOpen: (String) -> Unit) {
                     .clickable(onClickLabel = "Escanear") { onOpen("scan") }.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                SpriteUrl("${ITEMS}devon-scope.png", 32.dp, "Escanear")
+                SpriteUrl(item("wide-lens"), 32.dp, "Escanear")
                 GbaText("ESCANEAR", size = 11.sp)
             }
         }
@@ -157,13 +173,13 @@ private fun LookupCard(idx: GameIndex, onOpen: (String) -> Unit) {
 private fun ShortcutTiles(onOpen: (String) -> Unit) {
     var more by rememberSaveable { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        MAIN.forEach { Tile(it.label, it.item, Modifier.weight(1f)) { onOpen(it.route) } }
-        Tile(if (more) "MENOS" else "MÁS", "town-map", Modifier.weight(1f), selected = more) { more = !more }
+        MAIN.forEach { Tile(it.label, it.icon, Modifier.weight(1f), recolor = it.recolor) { onOpen(it.route) } }
+        Tile(if (more) "MENOS" else "MÁS", PLATINUM_MENU_ICONS, Modifier.weight(1f), selected = more, recolor = PlatinumBag) { more = !more }
     }
     if (more) {
         MORE.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                row.forEach { Tile(it.label, it.item, Modifier.weight(1f)) { onOpen(it.route) } }
+                row.forEach { Tile(it.label, it.icon, Modifier.weight(1f), recolor = it.recolor) { onOpen(it.route) } }
             }
         }
     }
@@ -171,11 +187,12 @@ private fun ShortcutTiles(onOpen: (String) -> Unit) {
 
 /** Acceso con el sprite de un objeto del juego y su nombre (hasta dos renglones, nunca cortado). */
 @Composable
-private fun Tile(label: String, item: String, modifier: Modifier, selected: Boolean = false, onClick: () -> Unit) {
+private fun Tile(label: String, icon: Any, modifier: Modifier, selected: Boolean = false,
+                 recolor: coil.transform.Transformation? = null, onClick: () -> Unit) {
     WindowBox(modifier.heightIn(min = 84.dp).clickable(onClickLabel = label, onClick = onClick), padding = 6.dp,
         background = if (selected) Pal.Select else Pal.Window) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            SpriteUrl("$ITEMS$item.png", 36.dp, label)
+            SpriteUrl(icon, 36.dp, label, recolor)
             GbaText(label, size = 12.sp, maxLines = 2, align = TextAlign.Center)
         }
     }
@@ -203,7 +220,7 @@ private fun RaidsCard(reco: Recommender, onOpen: (String) -> Unit) {
     if (top.isEmpty()) return
     val (highlights, _) = rememberComputed(top.map { it.name }) { top.associate { it.name to reco.raidHighlights(it.species!!, 1) } }
     WindowBox(Modifier.fillMaxWidth()) {
-        CardTitle("INCURSIONES DE HOY", "wishing-piece") { onOpen("raids") }
+        CardTitle("INCURSIONES DE HOY", "premier-ball") { onOpen("raids") }
         // Grilla de 4 columnas iguales: 8 jefes quedan en dos filas de 4.
         top.chunked(4).forEach { row ->
             Row(Modifier.fillMaxWidth()) {

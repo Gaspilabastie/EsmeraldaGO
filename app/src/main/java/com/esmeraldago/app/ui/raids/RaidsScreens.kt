@@ -182,9 +182,11 @@ fun CountersScreen(bossId: String, tierName: String, onBack: () -> Unit, onSpeci
                     }
                 }
             } else {
-                // Lo reportado por Pokébattler (simulación de la incursión entera); si no responde, el cálculo propio.
+                // Solo lo reportado por Pokébattler (simulación de la incursión entera); sin cálculo propio de reemplazo.
                 val level = settings.rankLevel.toInt()
-                val pb by produceState<Result<List<PbCounter>>?>(null, boss.id, tier, level) {
+                var attempt by remember { mutableStateOf(0) }
+                val pb by produceState<Result<List<PbCounter>>?>(null, boss.id, tier, level, attempt) {
+                    value = null
                     value = container.pokebattler.counters(boss, tier, level)
                 }
                 val result = pb ?: return@WithGame LoadingBox("Consultando Pokébattler")
@@ -210,19 +212,8 @@ fun CountersScreen(bossId: String, tierName: String, onBack: () -> Unit, onSpeci
                         }
                     }
                 } else {
-                    val (counters, busy) = rememberComputed(boss.id, tier, shadow, mega, elite, settings.rankLevel) {
-                        PveCalc.counters(boss, tier, idx, settings.rankLevel, shadow, mega, elite, limit = 40)
-                    }
-                    val list = counters ?: return@WithGame LoadingBox()
-                    val top = list.firstOrNull()?.score ?: 1.0
-                    GbaText("Pokébattler no respondió: cálculo propio.", size = 12.sp, color = Pal.Muted,
-                        modifier = Modifier.padding(horizontal = 10.dp))
-                    if (busy) GbaText("Recalculando…", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(horizontal = 10.dp))
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        itemsIndexed(list, key = { _, r -> "${r.species.id}|${r.fast.id}|${r.charged.id}" }) { i, r ->
-                            CounterRow(i + 1, r, top, onSpecies, topDps = list.first().dps, extra = "Nv ${fmtLevel(r.level)} 15/15/15")
-                        }
-                    }
+                    DialogBox("No se pudo consultar Pokébattler.", Modifier.padding(8.dp))
+                    Row(Modifier.padding(horizontal = 8.dp)) { PixelButton("REINTENTAR", { attempt++ }) }
                 }
             }
         }

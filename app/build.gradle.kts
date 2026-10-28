@@ -30,7 +30,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: quita el código y los recursos que no se usan y acorta nombres (APK más chico y más rápido).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Uso personal: se firma con la clave de debug para poder instalarla directo.
             signingConfig = signingConfigs.getByName("debug")
         }
@@ -58,6 +61,10 @@ android {
 kotlin {
     jvmToolchain(17)
 }
+
+// Los tests de la JVM abren pantallas con ComponentActivity, que solo declara ui-test-manifest (debugImplementation):
+// contra release fallan todos sin probar nada. Se corren solo contra debug, que es el mismo código.
+tasks.matching { it.name == "testReleaseUnitTest" }.configureEach { enabled = false }
 
 dependencies {
     implementation(project(":core"))

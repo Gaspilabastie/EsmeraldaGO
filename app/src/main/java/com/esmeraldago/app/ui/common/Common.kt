@@ -31,6 +31,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.FilterQuality
@@ -209,11 +210,25 @@ fun Sprite(
 
 /** Sprite suelto por URL (variantes de aspecto que no son entradas: letras de Unown, diseños de Vivillon…). */
 @Composable
-fun SpriteUrl(url: String, size: Dp, description: String) {
+fun SpriteUrl(url: Any, size: Dp, description: String, recolor: coil.transform.Transformation? = null) {
+    // Íconos dibujados para la app (recursos propios): ya vienen recortados; se dibujan sin suavizar.
+    if (url is Int) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.graphics.painter.BitmapPainter(
+                androidx.compose.ui.graphics.ImageBitmap.imageResource(url), filterQuality = FilterQuality.None),
+            contentDescription = description,
+            modifier = Modifier.size(size).padding(size * 0.06f),
+            contentScale = ContentScale.Fit,
+        )
+        return
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     AsyncImage(
-        model = remember(url) {
-            coil.request.ImageRequest.Builder(context).data(url).transformations(TrimTransparent).allowHardware(false).build()
+        model = remember(url, recolor) {
+            // Tamaño original: las hojas (la mochila es una tira de 64×384) se recortan después; si Coil las achicara
+            // antes para que entren en el cuadro, el recorte quedaría de pocos píxeles y borroso.
+            coil.request.ImageRequest.Builder(context).data(url).size(coil.size.Size.ORIGINAL)
+                .transformations(listOfNotNull(recolor, TrimTransparent)).allowHardware(false).build()
         },
         contentDescription = description,
         modifier = Modifier.size(size).padding(size * 0.06f),
@@ -294,7 +309,7 @@ fun RankRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             GbaText(if (rank > 0) "#$rank" else "", size = 14.sp, modifier = Modifier.width(38.dp), color = Pal.Muted)
-            Sprite(species, 52.dp, shadowTint, dynamaxIcon = dynamax, gigamaxIcon = gmax)
+            Sprite(species, 52.dp, shadowTint, gmax = gmax, dynamaxIcon = dynamax, gigamaxIcon = gmax)
             Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
                 GbaText(title, size = 15.sp, maxLines = 2)

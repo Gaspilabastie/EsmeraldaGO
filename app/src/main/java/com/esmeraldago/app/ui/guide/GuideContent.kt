@@ -100,9 +100,8 @@ val GUIDE: List<GuideEntry> = listOf(
         "Comparan cada Pokémon con el #1 de la lista: S desde 90 % del #1, A desde 80 %, B desde 70 %, C desde 60 %. " +
             "Con el filtro \"en su clase\", el #1 es el mejor de esa clase."),
     GuideEntry(GuideCategory.APP, "En su clase",
-        "Compara solo contra Pokémon sin ventajas que este no tenga. Uno común, solo contra comunes; un oscuro, también " +
-            "contra oscuros; un mega, también contra megas y oscuros; un legendario, también contra legendarios. " +
-            "Así los legendarios, megas y oscuros no tapan al resto."),
+        "Deja afuera a las megas si el Pokémon no es mega, y a los legendarios, singulares y ultraentes si no lo es. " +
+            "Los oscuros compiten junto a los normales, como en Pokébattler y DialgaDex."),
     GuideEntry(GuideCategory.APP, "ER (rango efectivo)",
         "Puntaje de atacante PvE: (DPS³ × TDO)^¼. Pondera más el daño por segundo que el daño total, " +
             "con el mismo criterio que GamePress y Pokémon GO Hub."),
