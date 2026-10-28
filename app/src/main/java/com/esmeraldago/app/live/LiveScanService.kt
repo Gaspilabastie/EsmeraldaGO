@@ -124,10 +124,26 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     // ------------------------------------------------------------------ acciones
 
     /**
-     * Registro de cada paso en el log de Android (etiqueta "EsmLive"), para revisar una prueba después con
-     * `adb logcat -s EsmLive`. No se muestra en la app.
+     * Registro de pruebas: cada paso va al log de Android (etiqueta "EsmLive") y a un archivo en la carpeta privada
+     * de la app (Android/data/com.esmeraldago.app/files/live/), junto con las imágenes que leyó el OCR. Así una prueba
+     * hecha sin la compu conectada se revisa después con adb. No se muestra en la app; se guardan las últimas
+     * [MAX_FRAMES] imágenes.
      */
-    private fun log(msg: String) { android.util.Log.i("EsmLive", msg) }
+    private val testDir by lazy { java.io.File(getExternalFilesDir(null), "live").apply { mkdirs() } }
+    private val stamp get() = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
+
+    private fun log(msg: String) {
+        android.util.Log.i("EsmLive", msg)
+        runCatching { java.io.File(testDir, "log.txt").appendText("$stamp $msg\n") }
+    }
+
+    private fun saveFrame(bmp: android.graphics.Bitmap) = runCatching {
+        val frames = java.io.File(testDir, "frames").apply { mkdirs() }
+        val name = java.text.SimpleDateFormat("yyyyMMdd_HHmmss_SSS", java.util.Locale.US).format(java.util.Date()) + ".jpg"
+        java.io.File(frames, name).outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, it) }
+        log("imagen $name")
+        frames.listFiles()?.sortedBy { it.name }?.dropLast(MAX_FRAMES)?.forEach { it.delete() }
+    }
 
     private fun summary(a: OcrScanner.Analysis?): String = a?.result?.let { r ->
         "${r.screen} ${r.species?.id ?: "?"} PC ${r.cp ?: "?"}${if (r.cpInferred) "*" else ""} PS ${r.hp ?: "?"} " +
@@ -256,6 +272,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     private suspend fun analyzeFrame(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
         val bmp = capturer?.grab() ?: return null
+        withContext(Dispatchers.IO) { saveFrame(bmp) }
         return try {
             container.ocr.analyze(bmp, parser)
         } catch (t: Throwable) {
@@ -415,6 +432,8 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     companion object {
         private const val CHANNEL = "live_scan"
         private const val NOTIFICATION_ID = 42
+        /** Imágenes de prueba que se conservan (~100 KB cada una). */
+        private const val MAX_FRAMES = 300
         const val ACTION_START = "com.esmeraldago.live.START"
         const val ACTION_STOP = "com.esmeraldago.live.STOP"
         private const val EXTRA_CODE = "code"
