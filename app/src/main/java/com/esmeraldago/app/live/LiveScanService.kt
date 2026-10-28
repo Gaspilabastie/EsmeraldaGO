@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Escaneo en vivo (como Poke Genie): un servicio en primer plano captura la pantalla con MediaProjection
@@ -104,6 +105,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         // Fuera de Pokémon GO: la burbuja se oculta y el modo continuo se pausa (sin leer otras apps).
         lifecycleScope.launch {
             LiveGestureService.foreground.collect { pkg ->
+                log("app adelante: $pkg")
                 val nowAway = pkg != null && pkg != LiveGestureService.POKEMON_GO
                 if (nowAway != away) { away = nowAway; setOverlaysVisible(!nowAway) }
             }
@@ -113,8 +115,9 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     private var panelWanted = false
 
     private fun setOverlaysVisible(visible: Boolean) {
+        log(if (visible) "Pokémon GO adelante: se muestra la burbuja" else "otra app adelante: se oculta la burbuja")
         if (visible) {
-            bubble?.let { v -> runCatching { wm.addView(v, bubbleParams) } }
+            bubble?.let { v -> runCatching { wm.addView(v, bubbleParams) }.onFailure { log("no se pudo mostrar la burbuja: ${it.message}") } }
             if (panelWanted) panel?.let { v -> runCatching { wm.addView(v, panelParams) } }
         } else {
             listOfNotNull(bubble, panel).forEach { runCatching { wm.removeView(it) } }
@@ -154,16 +157,27 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     /** Lee lo que hay en pantalla ahora (un toque en la burbuja). */
     fun scanNow() {
-        if (scanJob?.isActive == true) return
+        log("toque en la burbuja (lejos de Pokémon GO: $away, panel: $panelWanted)")
+        if (scanJob?.isActive == true) {
+            // Un escaneo sigue en curso: en vez de ignorar el toque, se muestra el panel con su estado.
+            log("escaneo anterior todavía en curso: se muestra el panel")
+            showPanel(true)
+            return
+        }
         scanJob = lifecycleScope.launch {
             _status.value = "Leyendo…"
             val idx = container.scan.idx()
             val parser = container.scan.parserFor(idx)
             pendingAppraisal = null
             log("— escaneo pedido")
-            val a = withOverlaysHidden { captureBest(parser) }
+            // Límite general: si algo se traba, se corta, la burbuja vuelve y se puede escanear de nuevo.
+            var finished = false
+            val a = withTimeoutOrNull(45_000) { withOverlaysHidden { captureBest(parser) }.also { finished = true } }
+            val timedOut = !finished
+            if (timedOut) log("el escaneo superó los 45 s y se cortó")
             log("resultado: ${summary(a)}" + (pendingAppraisal?.let { " + valoración: ${summary(it)}" } ?: ""))
             when {
+                a == null && timedOut -> _status.value = "La lectura tardó demasiado. Volver a tocar la burbuja."
                 a == null -> _status.value = "Sin imagen de la pantalla todavía."
                 a.result.screen == ScreenType.UNKNOWN -> {
                     // No era la ficha de un Pokémon: se avisa, sin cargarlo como falla ni mostrar el anterior.
@@ -295,7 +309,8 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         return try {
             block()
         } finally {
-            if (!away) views.forEach { (v, p) -> runCatching { wm.addView(v, p) } }
+            if (!away) views.forEach { (v, p) -> runCatching { wm.addView(v, p) }.onFailure { log("no se pudo volver a mostrar una ventana: ${it.message}") } }
+            else log("después de leer: Pokémon GO no está adelante, la burbuja queda oculta")
         }
     }
 
@@ -383,6 +398,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     fun showPanel(show: Boolean) {
+        log(if (show) "panel abierto" else "panel cerrado")
         panelWanted = show
         if (show && panel == null) {
             val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
@@ -48,13 +49,7 @@ class LiveGestureService : AccessibilityService() {
         val x = m.widthPixels * 0.5f
         val path = Path().apply { moveTo(x, m.heightPixels * from); lineTo(x, m.heightPixels * to) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, durationMs)).build()
-        return suspendCancellableCoroutine { cont ->
-            val ok = dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(g: GestureDescription?) { if (cont.isActive) cont.resume(true) }
-                override fun onCancelled(g: GestureDescription?) { if (cont.isActive) cont.resume(false) }
-            }, null)
-            if (!ok && cont.isActive) cont.resume(false)
-        }
+        return dispatch(gesture, durationMs)
     }
 
     /** Un toque en [x]/[y] (fracción del ancho y del alto). */
@@ -62,14 +57,23 @@ class LiveGestureService : AccessibilityService() {
         val m = resources.displayMetrics
         val path = Path().apply { moveTo(m.widthPixels * x, m.heightPixels * y) }
         val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, 60)).build()
-        return suspendCancellableCoroutine { cont ->
-            val ok = dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(g: GestureDescription?) { if (cont.isActive) cont.resume(true) }
-                override fun onCancelled(g: GestureDescription?) { if (cont.isActive) cont.resume(false) }
-            }, null)
-            if (!ok && cont.isActive) cont.resume(false)
-        }
+        return dispatch(gesture, 60)
     }
+
+    /**
+     * Envía el gesto y espera la confirmación de Android, con un límite: a veces el aviso de "terminado" no llega
+     * nunca y el escaneo quedaba colgado (la burbuja dejaba de responder). Sin confirmación, cuenta como fallido.
+     */
+    private suspend fun dispatch(gesture: GestureDescription, durationMs: Long): Boolean =
+        withTimeoutOrNull(durationMs + 2000) {
+            suspendCancellableCoroutine { cont ->
+                val ok = dispatchGesture(gesture, object : GestureResultCallback() {
+                    override fun onCompleted(g: GestureDescription?) { if (cont.isActive) cont.resume(true) }
+                    override fun onCancelled(g: GestureDescription?) { if (cont.isActive) cont.resume(false) }
+                }, null)
+                if (!ok && cont.isActive) cont.resume(false)
+            }
+        } ?: false
 
     /** El botón "atrás" del sistema. */
     fun back(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
