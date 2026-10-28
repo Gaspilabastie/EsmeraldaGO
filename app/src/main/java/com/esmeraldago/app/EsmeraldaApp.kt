@@ -80,8 +80,9 @@ class AppContainer(app: Application) {
     val updates = UpdateRepository(app, scope)
     val ocr = OcrScanner(app)
     val scan = ScanSession(
-        scope, ocr, game,
+        scope, ocr, game, collection,
         levelCap = { settings.state.value.pokemonLevelCap },
+        pendingFile = java.io.File(app.filesDir, "scan-pending.json"),
     )
 
     /** Pantalla a la que hay que ir (por ejemplo "scan" al recibir capturas compartidas). */

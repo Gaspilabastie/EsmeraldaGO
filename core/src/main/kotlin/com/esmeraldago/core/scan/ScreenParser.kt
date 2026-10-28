@@ -40,6 +40,7 @@ data class AppraisalBars(val atk: Float, val def: Float, val sta: Float) {
  * Lo que se leyó de una captura, sin interpretar todavía. Se guarda en el resultado para poder
  * re-resolver (otra especie elegida a mano, o combinar detalle + valoración del mismo Pokémon).
  */
+@kotlinx.serialization.Serializable
 data class ScreenReading(
     val appraisalScreen: Boolean = false,
     val cp: Int? = null,
@@ -47,6 +48,8 @@ data class ScreenReading(
     val cpDigits: String? = null,
     /** Se vio el rótulo "CP" junto al número (si no, el número salió solo de su posición). */
     val cpLabeled: Boolean = false,
+    /** El PC se armó con dígitos de varios fotogramas y alguno no se vio: hay que confirmarlo. */
+    val cpReconstructed: Boolean = false,
     val hp: Int? = null,
     val dust: Int? = null,
     val shadow: Boolean = false,
@@ -66,6 +69,7 @@ data class ScreenReading(
     fun mergedWith(o: ScreenReading) = ScreenReading(
         appraisalScreen = appraisalScreen || o.appraisalScreen,
         cp = cp ?: o.cp, cpDigits = cpDigits ?: o.cpDigits, cpLabeled = cpLabeled || o.cpLabeled,
+        cpReconstructed = if (cp != null) cpReconstructed else o.cpReconstructed,
         hp = hp ?: o.hp, dust = dust ?: o.dust,
         shadow = shadow || o.shadow, lucky = lucky || o.lucky,
         dynamax = dynamax || o.dynamax, gigantamax = gigantamax || o.gigantamax,
@@ -240,8 +244,8 @@ class ScreenParser(private val idx: GameIndex) {
         val seen = digitPattern(frames)
         if (seen != null) {
             fun fits(p: String) = expandPattern(p).mapNotNull { cp ->
-                resolve(reading.copy(cp = cp, cpDigits = cp.toString(), cpLabeled = true), appraisal)
-                    .takeIf { it.cp == cp && !it.cpInferred && it.candidates.isNotEmpty() }
+                resolve(reading.copy(cp = cp, cpDigits = cp.toString(), cpLabeled = true, cpReconstructed = p.contains('?')), appraisal)
+                    .takeIf { it.cp == cp && it.candidates.isNotEmpty() && (it.reading?.cpReconstructed == true || !it.cpInferred) }
             }
             // Un dígito tapado en el extremo en TODOS los fotogramas no deja hueco: probar un casillero más.
             val (pattern, options) = listOf(seen, "$seen?", "?$seen").filter { it.length <= 4 }
@@ -249,7 +253,7 @@ class ScreenParser(private val idx: GameIndex) {
             if (options.size == 1) {
                 val r = options.first()
                 return if (pattern.contains('?')) r.copy(cpInferred = true,
-                    problem = r.problem ?: "PC reconstruido de varios fotogramas (${pattern.replace('?', '_')} → ${r.cp}): revisar.")
+                    problem = "PC reconstruido de varios fotogramas (${pattern.replace('?', '_')} → ${r.cp}): revisar.")
                 else r
             }
         }
@@ -566,8 +570,9 @@ class ScreenParser(private val idx: GameIndex) {
         }
 
         var cp = reading.cp
-        var cpInferred = false
-        var cpNote: String? = null
+        // Un PC armado con dígitos de varios fotogramas sigue siendo una deducción aunque se combine con otra captura.
+        var cpInferred = reading.cpReconstructed && cp != null
+        var cpNote: String? = if (cpInferred) "PC reconstruido de varios fotogramas: revisar." else null
         var opts = if (cp != null || appraisal != null) options(cp) else pool.map { Option(it, emptyList(), identity(it), 0) }
 
         // El PC leído no cuadra con NINGUNA especie posible (dígito tapado o mal leído): probar variantes

@@ -60,6 +60,9 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
     private var panel: ComposeView? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var panelParams: WindowManager.LayoutParams? = null
+    private var menu: ComposeView? = null
+    private var menuParams: WindowManager.LayoutParams? = null
+    private var menuClosedAt = 0L
     private var continuousJob: Job? = null
     private var scanJob: Job? = null
     /** Pokémon GO no está adelante (lo sabe el servicio de accesibilidad, si está activo). */
@@ -127,7 +130,11 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
      */
     private val homePosition = HashMap<View, Pair<Int, Int>>()
 
-    private fun overlays() = listOfNotNull(bubble?.let { v -> bubbleParams?.let { v to it } }, panel?.let { v -> panelParams?.let { v to it } })
+    private fun overlays() = listOfNotNull(
+        bubble?.let { v -> bubbleParams?.let { v to it } },
+        panel?.let { v -> panelParams?.let { v to it } },
+        menu?.let { v -> menuParams?.let { v to it } },
+    )
 
     private fun moveAway(v: View, p: WindowManager.LayoutParams) {
         if (v in homePosition || !v.isAttachedToWindow) return
@@ -178,17 +185,24 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             (r.problem?.let { " problema: $it" } ?: "")
     } ?: "sin imagen"
 
-    /** Lee lo que hay en pantalla ahora (un toque en la burbuja). */
+    /**
+     * Lee lo que hay en pantalla ahora (un toque en la burbuja). Antes de leer se cierra el cuadro anterior: ninguna
+     * ventana propia queda en pantalla durante la captura ni mientras se toca el juego. Lo completo se guarda solo
+     * (si está activado); el resultado aparece en el cuadro y en el centro de la burbuja.
+     */
     fun scanNow() {
-        log("toque en la burbuja (lejos de Pokémon GO: $away, panel: $panelWanted)")
+        log("toque en la burbuja (lejos de Pokémon GO: $away, cuadro: $panelWanted)")
         if (scanJob?.isActive == true) {
-            // Un escaneo sigue en curso: en vez de ignorar el toque, se muestra el panel con su estado.
-            log("escaneo anterior todavía en curso: se muestra el panel")
-            showPanel(true)
+            log("escaneo anterior todavía en curso: se ignora el toque")
+            vibrate(15)
             return
         }
+        closeMenu()
+        showPanel(false)
+        _mark.value = null
         scanJob = lifecycleScope.launch {
-            _status.value = "Leyendo…"
+            vibrate(25)
+            _status.value = null
             val idx = container.scan.idx()
             val parser = container.scan.parserFor(idx)
             pendingAppraisal = null
@@ -199,6 +213,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             val timedOut = !finished
             if (timedOut) log("el escaneo superó los 45 s y se cortó")
             log("resultado: ${summary(a)}" + (pendingAppraisal?.let { " + valoración: ${summary(it)}" } ?: ""))
+            var key: Int? = null
             when {
                 a == null && timedOut -> _status.value = "La lectura tardó demasiado. Volver a tocar la burbuja."
                 a == null -> _status.value = "Sin imagen de la pantalla todavía."
@@ -208,13 +223,37 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
                     _status.value = a.result.problem ?: "No es la ficha de un Pokémon."
                 }
                 else -> {
-                    container.scan.submit(a, idx, parser)
+                    key = container.scan.submit(a, idx, parser)
                     // La valoración leída sola se empareja con la ficha (mismo PC y PS).
-                    pendingAppraisal?.let { container.scan.submit(it, idx, parser) }
-                    _status.value = null
+                    pendingAppraisal?.let { key = container.scan.submit(it, idx, parser) ?: key }
                 }
             }
+            val d = key?.let { k ->
+                if (container.settings.state.value.autoSave) container.scan.settle(k, idx)
+                else container.scan.drafts.value.firstOrNull { it.key == k }
+            }
+            log("estado: ${d?.status ?: "sin borrador"}" + (d?.missing?.let { " ($it)" } ?: ""))
+            _mark.value = if (d?.saved == true) "✓" else "!"
+            vibrate(if (d?.saved == true) 25 else 70)
             showPanel(true)
+        }
+    }
+
+    /** GUARDAR desde el cuadro (con el guardado automático apagado). */
+    fun save(key: Int) {
+        lifecycleScope.launch {
+            val d = container.scan.settle(key, container.scan.idx())
+            _mark.value = if (d?.saved == true) "✓" else "!"
+        }
+    }
+
+    private fun vibrate(ms: Long) {
+        runCatching {
+            val v = if (Build.VERSION.SDK_INT >= 31)
+                (getSystemService(VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager).defaultVibrator
+            else @Suppress("DEPRECATION") (getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator)
+            if (Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createOneShot(ms, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            else @Suppress("DEPRECATION") v.vibrate(ms)
         }
     }
 
@@ -385,14 +424,17 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     // ------------------------------------------------------------------ ventanas flotantes
 
-    private fun overlayParams(width: Int, height: Int, focusable: Boolean = false) = WindowManager.LayoutParams(
+    private fun overlayParams(width: Int, height: Int, watchOutside: Boolean = false) = WindowManager.LayoutParams(
         width, height,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-        (if (focusable) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) or
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_SECURE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            (if (watchOutside) WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH else 0),
         PixelFormat.TRANSLUCENT,
     ).apply { gravity = Gravity.TOP or Gravity.START }
+
+    private fun dp(v: Int) = (resources.displayMetrics.density * v).toInt()
 
     private fun composeView(content: @androidx.compose.runtime.Composable () -> Unit) = ComposeView(this).apply {
         setViewTreeLifecycleOwner(this@LiveScanService)
@@ -404,33 +446,43 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     private fun showBubble() {
         if (bubble != null) return
+        val dm = resources.displayMetrics
+        val saved = container.settings.state.value
         val params = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {
-            x = resources.displayMetrics.widthPixels - (resources.displayMetrics.density * 80).toInt()
-            y = (resources.displayMetrics.heightPixels * 0.35f).toInt()
+            // La posición se recuerda entre sesiones (dentro de la pantalla).
+            x = if (saved.bubbleX >= 0) saved.bubbleX.coerceAtMost(dm.widthPixels - dp(62)) else dm.widthPixels - dp(80)
+            y = if (saved.bubbleY >= 0) saved.bubbleY.coerceAtMost(dm.heightPixels - dp(62)) else (dm.heightPixels * 0.35f).toInt()
         }
         bubbleParams = params
         bubble = composeView {
             LiveBubble(
-                container = container,
                 service = this,
                 onDrag = { dx, dy ->
+                    closeMenu()
                     params.x += dx.toInt(); params.y += dy.toInt()
                     bubble?.let { runCatching { wm.updateViewLayout(it, params) } }
+                },
+                onDragEnd = {
+                    val (x, y) = params.x to params.y
+                    container.settings.update { it.copy(bubbleX = x.coerceAtLeast(0), bubbleY = y.coerceAtLeast(0)) }
                 },
             )
         }
         wm.addView(bubble, params)
     }
 
+    /** Cuadro del resultado: a lo ancho con un margen, a la altura del modelo 3D (entre el PC y el nombre). */
     fun showPanel(show: Boolean) {
-        log(if (show) "panel abierto" else "panel cerrado")
+        log(if (show) "cuadro abierto" else "cuadro cerrado")
         panelWanted = show
         if (show && panel == null) {
-            val params = overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT).apply {
-                y = (resources.displayMetrics.density * 24).toInt()
+            val dm = resources.displayMetrics
+            val params = overlayParams(dm.widthPixels - dp(32), WindowManager.LayoutParams.WRAP_CONTENT).apply {
+                x = dp(16)
+                y = (dm.heightPixels * 0.17f).toInt()
             }
             panelParams = params
-            val view = composeView { LivePanel(container = container, service = this) }
+            val view = composeView { LiveResult(container = container, service = this) }
             panel = view
             wm.addView(view, params)
             // Lejos de Pokémon GO se crea igual, pero fuera de la pantalla (vuelve con la burbuja).
@@ -440,6 +492,37 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             panel = null
         }
         _panelVisible.value = show
+    }
+
+    /** Menú de la burbuja (mantener apretado), al costado de la burbuja que da al centro de la pantalla. */
+    fun toggleMenu() {
+        if (menu != null) { closeMenu(); return }
+        // El toque que cerró el menú (fuera de él) puede ser el mismo que lo vuelve a pedir.
+        if (System.currentTimeMillis() - menuClosedAt < 600) return
+        val bp = bubbleParams ?: return
+        val dm = resources.displayMetrics
+        val params = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, watchOutside = true).apply {
+            x = if (bp.x > dm.widthPixels / 2) (bp.x - dp(204)).coerceAtLeast(0) else bp.x + dp(70)
+            y = bp.y
+        }
+        menuParams = params
+        val view = composeView { LiveMenu(container = container, service = this) }
+        view.setOnTouchListener { _, e ->
+            if (e.action == android.view.MotionEvent.ACTION_OUTSIDE) { closeMenu(); true } else false
+        }
+        menu = view
+        wm.addView(view, params)
+        vibrate(20)
+        // Si no se elige nada, se cierra solo.
+        lifecycleScope.launch { delay(6000); if (menu === view) closeMenu() }
+    }
+
+    private fun closeMenu() {
+        val v = menu ?: return
+        homePosition.remove(v)
+        runCatching { wm.removeView(v) }
+        menu = null
+        menuClosedAt = System.currentTimeMillis()
     }
 
     private fun notification(): Notification {
@@ -463,8 +546,10 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     override fun onDestroy() {
         continuousJob?.cancel()
-        listOfNotNull(bubble, panel).forEach { runCatching { wm.removeView(it) } }
-        bubble = null; panel = null
+        listOfNotNull(bubble, panel, menu).forEach { runCatching { wm.removeView(it) } }
+        bubble = null; panel = null; menu = null
+        container.scan.endLive()
+        _mark.value = null
         capturer?.release(); capturer = null
         projection?.stop(); projection = null
         _running.value = false
@@ -491,6 +576,9 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         val status: StateFlow<String?> = _status.asStateFlow()
         private val _detected = MutableStateFlow(0)
         val detected: StateFlow<Int> = _detected.asStateFlow()
+        /** Cómo terminó el último escaneo, en el centro de la burbuja: "✓" guardado, "!" falta algo. */
+        private val _mark = MutableStateFlow<String?>(null)
+        val mark: StateFlow<String?> = _mark.asStateFlow()
 
         fun start(context: Context, resultCode: Int, data: Intent) {
             val i = Intent(context, LiveScanService::class.java).setAction(ACTION_START)

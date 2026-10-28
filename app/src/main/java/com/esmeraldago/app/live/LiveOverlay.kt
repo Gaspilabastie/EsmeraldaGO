@@ -8,21 +8,18 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,41 +31,44 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.esmeraldago.app.AppContainer
 import com.esmeraldago.app.data.GameState
+import com.esmeraldago.app.scan.DraftStatus
 import com.esmeraldago.app.ui.common.ProvideContainer
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.displayName
-import com.esmeraldago.app.ui.common.fmtLevel
-import com.esmeraldago.app.ui.common.rememberComputed
 import com.esmeraldago.app.ui.theme.EmeraldTheme
 import com.esmeraldago.app.ui.theme.GbaText
 import com.esmeraldago.app.ui.theme.Pal
 import com.esmeraldago.app.ui.theme.PixelButton
 import com.esmeraldago.app.ui.theme.ToggleChip
 import com.esmeraldago.app.ui.theme.WindowBox
-import com.esmeraldago.core.model.League
-import com.esmeraldago.core.scan.ScreenType
+import com.esmeraldago.core.model.OwnedPokemon
 
-/** Burbuja flotante: tocar = escanear; mantener apretado = mostrar/ocultar el panel; arrastrar = moverla. */
+/** Color del IV% (el mismo que en la caja). */
+internal fun ivColor(p: OwnedPokemon) = when {
+    p.ivPercent >= 98 -> Pal.Good
+    p.ivPercent >= 80 -> Pal.Gold
+    else -> Pal.Muted
+}
+
+/** Burbuja flotante: tocar = escanear; mantener apretado = menú; arrastrar = moverla. */
 @Composable
-fun LiveBubble(container: AppContainer, service: LiveScanService, onDrag: (Float, Float) -> Unit) {
-    val pending by container.scan.pending.collectAsState()
+fun LiveBubble(service: LiveScanService, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit) {
     val continuous by LiveScanService.continuous.collectAsState()
     val detected by LiveScanService.detected.collectAsState()
-    val panel by LiveScanService.panelVisible.collectAsState()
+    val mark by LiveScanService.mark.collectAsState()
     EmeraldTheme {
         Box(
             Modifier
                 .size(62.dp)
-                .pointerInput(Unit) { detectDragGestures { change, drag -> change.consume(); onDrag(drag.x, drag.y) } }
-                .pointerInput(panel) {
-                    detectTapGestures(
-                        onTap = { service.scanNow() },
-                        onLongPress = { service.showPanel(!panel) },
-                    )
+                .pointerInput(Unit) {
+                    detectDragGestures(onDragEnd = onDragEnd) { change, drag -> change.consume(); onDrag(drag.x, drag.y) }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { service.scanNow() }, onLongPress = { service.toggleMenu() })
                 },
             contentAlignment = Alignment.Center,
         ) {
-            // "Esmeralda Ball" pixelada
+            // "Esmeralda Ball" pixelada; el centro muestra cómo terminó el último escaneo.
             Box(
                 Modifier.size(54.dp)
                     .clip(CircleShape) // sin esto las mitades se pintaban como un cuadrado
@@ -80,12 +80,16 @@ fun LiveBubble(container: AppContainer, service: LiveScanService, onDrag: (Float
                     .border(3.dp, Color(0xFF303030), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.size(16.dp).background(Color(0xFFF8F8F8), CircleShape).border(3.dp, Color(0xFF303030), CircleShape))
+                if (mark == null) {
+                    Box(Modifier.size(16.dp).background(Color(0xFFF8F8F8), CircleShape).border(3.dp, Color(0xFF303030), CircleShape))
+                } else {
+                    Box(
+                        Modifier.size(26.dp).background(Color(0xFFF8F8F8), CircleShape).border(2.dp, Color(0xFF303030), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) { GbaText(mark!!, size = 15.sp, color = Color(0xFF303030)) }
+                }
             }
-            when {
-                pending > 0 -> Badge("…", Pal.Blue, Modifier.align(Alignment.TopEnd))
-                continuous -> Badge(detected.toString(), Pal.Dynamax, Modifier.align(Alignment.TopEnd))
-            }
+            if (continuous) Badge(detected.toString(), Pal.Dynamax, Modifier.align(Alignment.TopEnd))
         }
     }
 }
@@ -97,92 +101,112 @@ private fun Badge(text: String, color: Color, modifier: Modifier) {
     }
 }
 
-/** Panel con el último Pokémon leído: IV, ranks PvP y acciones rápidas. */
-@OptIn(ExperimentalLayoutApi::class)
+/** Menú de la burbuja (mantener apretado): modo continuo y resultados. Detener queda en la notificación y en la app. */
 @Composable
-fun LivePanel(container: AppContainer, service: LiveScanService) {
+fun LiveMenu(container: AppContainer, service: LiveScanService) {
+    val continuous by LiveScanService.continuous.collectAsState()
+    val drafts by container.scan.drafts.collectAsState()
+    EmeraldTheme {
+        WindowBox(Modifier.width(196.dp), padding = 4.dp) {
+            MenuRow("CONTINUO", if (continuous) "SÍ" else "NO") { service.setContinuous(!continuous); service.toggleMenu() }
+            MenuRow("RESULTADOS" + if (drafts.isNotEmpty()) " (${drafts.size})" else "", null) { service.toggleMenu(); service.openApp() }
+        }
+    }
+}
+
+@Composable
+private fun MenuRow(label: String, value: String?, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick).padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GbaText(label, size = 16.sp, modifier = Modifier.weight(1f))
+        value?.let { GbaText(it, size = 14.sp, color = Pal.Muted) }
+    }
+}
+
+/**
+ * Cuadro con el resultado del último escaneo, a la altura del modelo 3D (no tapa el nombre ni el PC). Queda hasta el
+ * próximo escaneo o hasta cerrarlo. Lleva el nombre del Pokémon: así queda claro a cuál se aplica DESHACER.
+ */
+@Composable
+fun LiveResult(container: AppContainer, service: LiveScanService) {
     val drafts by container.scan.drafts.collectAsState()
     val latestKey by container.scan.latestKey.collectAsState()
-    val failures by container.scan.failures.collectAsState()
-    val pending by container.scan.pending.collectAsState()
     val status by LiveScanService.status.collectAsState()
-    val continuous by LiveScanService.continuous.collectAsState()
-    val detected by LiveScanService.detected.collectAsState()
     val game by container.game.state.collectAsState()
-    var saved by remember { mutableStateOf<String?>(null) }
+    val boxItems by container.collection.items.collectAsState()
     val draft = drafts.firstOrNull { it.key == latestKey }
+    val idx = (game as? GameState.Ready)?.idx
 
     EmeraldTheme {
         ProvideContainer(container) {
-            WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp), padding = 8.dp) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    GbaText("ESCANEO EN VIVO", size = 15.sp, modifier = Modifier.weight(1f))
-                    Box(Modifier.size(40.dp).clickable { service.showPanel(false) }, contentAlignment = Alignment.Center) {
-                        GbaText("×", size = 18.sp)
-                    }
-                }
-                val info = status ?: when {
-                    pending > 0 -> "Leyendo…"
-                    saved != null -> saved
-                    draft == null && failures.isNotEmpty() -> "No se reconoció: ${failures.last().reason}"
-                    draft == null -> "Abrir un Pokémon en el juego y tocar la burbuja. La valoración da los IV exactos."
-                    else -> null
-                }
-                info?.let { GbaText(it, size = 13.sp, color = Pal.Muted) }
-
-                val ready = game as? GameState.Ready
-                if (draft != null && ready != null) {
-                    val p = draft.pokemon
-                    val s = draft.result.species
+            WindowBox(Modifier.fillMaxWidth(), padding = 8.dp) {
+                if (draft == null || idx == null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (s != null) Sprite(p, s, 56.dp)
-                        Spacer(Modifier.width(6.dp))
-                        Column(Modifier.weight(1f)) {
-                            GbaText(s?.displayName ?: "¿Especie?", size = 16.sp)
-                            GbaText("PC ${draft.result.cp ?: "?"} · Nv ${fmtLevel(p.level)}" + (p.hp?.let { " · PS $it" } ?: ""), size = 13.sp)
-                            GbaText(
-                                when {
-                                    draft.result.candidates.isEmpty() -> "IV sin solución: revisar en la app."
-                                    draft.result.ivExact -> "IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%), exactos"
-                                    else -> "IV ${draft.result.ivRangeText} · ${draft.result.candidates.size} opciones: falta la valoración"
-                                },
-                                size = 13.sp, color = if (draft.result.ivExact) Pal.Text else Pal.Warn,
-                            )
-                            if (draft.result.screen != ScreenType.APPRAISAL && draft.sources < 2 && draft.result.fast == null)
-                                GbaText("Ataques fuera de pantalla: bajar la ficha.", size = 11.sp, color = Pal.Muted)
-                        }
+                        GbaText(status ?: "Sin lectura.", size = 14.sp, modifier = Modifier.weight(1f))
+                        CloseButton { service.showPanel(false) }
                     }
-                    draft.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Warn) }
-                    // Ranks PvP rápidos (también como su evolución)
-                    val (pvp, _) = rememberComputed(p, ready.reco) {
-                        League.entries.mapNotNull { lg ->
-                            ready.reco.pvpCandidates(lg, listOf(p.copy(uid = "live"))).firstOrNull()?.let { c ->
-                                "${lg.label}: IV #${c.iv.rank} · meta #${c.metaRank}" + if (c.needsEvolve) " (como ${c.species.displayName})" else ""
-                            }
-                        }
-                    }
-                    pvp?.forEach { GbaText(it, size = 12.sp) }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(top = 4.dp)) {
-                        PixelButton("GUARDAR", {
-                            val ok = container.scan.saveOne(draft.key, container.collection)
-                            saved = when {
-                                ok != null -> "${s?.displayName ?: "Pokémon"} guardado en la caja."
-                                draft.result.cp == null -> "Falta el PC: escanear la valoración o cargarlo en REVISAR."
-                                else -> "No se pudo guardar."
-                            }
-                        }, color = Pal.Blue, enabled = s != null)
-                        PixelButton("DESCARTAR", { container.scan.remove(draft.key); saved = null }, color = Pal.Muted)
-                    }
+                    return@WindowBox
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = 6.dp)) {
-                    PixelButton("ESCANEAR", { saved = null; service.scanNow() })
-                    ToggleChip("Continuo" + if (continuous) " ($detected)" else "", continuous, { service.setContinuous(it) })
-                    PixelButton("REVISAR (${drafts.size})", { service.openApp() }, color = Pal.Header)
-                    PixelButton("DETENER", { LiveScanService.stop(service) }, color = Pal.Red)
+                val p = draft.pokemon
+                val s = draft.result.species
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (s != null) Sprite(p, s, 48.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Column(Modifier.weight(1f)) {
+                        GbaText(s?.displayName ?: "Especie sin reconocer", size = 16.sp)
+                        Row {
+                            GbaText("PC ${draft.result.cp ?: "—"} · IV ", size = 14.sp)
+                            GbaText(
+                                if (draft.result.ivExact || draft.ivPicked) "${p.ivPercent}%" else draft.result.ivRangeText,
+                                size = 14.sp, color = if (draft.result.ivExact || draft.ivPicked) ivColor(p) else Pal.Warn,
+                            )
+                        }
+                    }
+                    ToggleChip("SHINY", p.shiny, { v -> container.scan.setShiny(draft.key, v) })
+                    CloseButton { service.showPanel(false) }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 4.dp)) {
+                    when (draft.status) {
+                        DraftStatus.SAVED -> {
+                            GbaText("Guardado en la caja.", size = 14.sp, color = Pal.Good, modifier = Modifier.weight(1f))
+                            PixelButton("DESHACER", { container.scan.undo(draft.key) }, color = Pal.Muted)
+                        }
+                        DraftStatus.UPDATED -> {
+                            GbaText("Actualizado en la caja.", size = 14.sp, color = Pal.Blue, modifier = Modifier.weight(1f))
+                            PixelButton("DESHACER", { container.scan.undo(draft.key) }, color = Pal.Muted)
+                        }
+                        DraftStatus.READY -> {
+                            GbaText("Lectura completa.", size = 14.sp, modifier = Modifier.weight(1f))
+                            PixelButton("GUARDAR", { service.save(draft.key) }, color = Pal.Blue)
+                        }
+                        DraftStatus.INCOMPLETE -> {
+                            GbaText(draft.missing ?: "", size = 14.sp, color = Pal.Warn, modifier = Modifier.weight(1f))
+                            PixelButton("COMPLETAR", { service.openApp() })
+                        }
+                        DraftStatus.DUPLICATE -> {
+                            val other = boxItems.firstOrNull { it.uid == draft.duplicateOf }
+                            Column(Modifier.weight(1f)) {
+                                GbaText("Posible duplicado: ${other?.let { idx[it.speciesId]?.displayName } ?: "otro"} de la caja con los mismos IV.",
+                                    size = 14.sp, color = Pal.Warn)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                    PixelButton("REEMPLAZAR", { container.scan.replace(draft.key) }, Modifier.weight(1f))
+                                    PixelButton("AGREGAR", { container.scan.addAnyway(draft.key) }, Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CloseButton(onClick: () -> Unit) {
+    Box(Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        GbaText("×", size = 20.sp)
     }
 }

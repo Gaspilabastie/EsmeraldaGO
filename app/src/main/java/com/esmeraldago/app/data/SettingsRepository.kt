@@ -22,6 +22,11 @@ data class Settings(
     val autoScroll: Boolean = true,
     /** Con Wi-Fi, bajar e instalar las versiones nuevas solo, desde la pantalla de inicio. */
     val autoUpdate: Boolean = true,
+    /** Escaneo en vivo: guardar en la caja lo que se leyó completo (especie, PC e IV exactos). */
+    val autoSave: Boolean = true,
+    /** Posición de la burbuja en píxeles (-1 = la de siempre). */
+    val bubbleX: Int = -1,
+    val bubbleY: Int = -1,
 ) {
     /**
      * Nivel máximo de un Pokémon al escanear. Ya no se pide el nivel de entrenador: el costo de polvo fija el nivel
@@ -42,6 +47,9 @@ class SettingsRepository(context: Context) {
             showUnreleased = prefs.getBoolean("showUnreleased", false),
             autoScroll = prefs.getBoolean("autoScroll", true),
             autoUpdate = prefs.getBoolean("autoUpdate", true),
+            autoSave = prefs.getBoolean("autoSave", true),
+            bubbleX = prefs.getInt("bubbleX", -1),
+            bubbleY = prefs.getInt("bubbleY", -1),
         )
     )
     val state: StateFlow<Settings> = _state.asStateFlow()
@@ -58,6 +66,9 @@ class SettingsRepository(context: Context) {
             .putBoolean("showUnreleased", s.showUnreleased)
             .putBoolean("autoScroll", s.autoScroll)
             .putBoolean("autoUpdate", s.autoUpdate)
+            .putBoolean("autoSave", s.autoSave)
+            .putInt("bubbleX", s.bubbleX)
+            .putInt("bubbleY", s.bubbleY)
             .apply()
     }
 }

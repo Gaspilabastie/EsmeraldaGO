@@ -89,6 +89,14 @@ class CollectionRepository(context: Context, private val scope: CoroutineScope) 
         persist()
     }
 
+    /** Agrega uno nuevo y devuelve su uid. */
+    fun add(p: OwnedPokemon): String {
+        val uid = UUID.randomUUID().toString()
+        _items.update { it + p.copy(uid = uid, addedAt = System.currentTimeMillis()) }
+        persist()
+        return uid
+    }
+
     fun addAll(ps: List<OwnedPokemon>) {
         val now = System.currentTimeMillis()
         _items.update { it + ps.map { p -> p.copy(uid = UUID.randomUUID().toString(), addedAt = now) } }

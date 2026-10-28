@@ -257,9 +257,14 @@ private fun LiveScanBox() {
             size = 12.sp, color = Pal.Muted)
         // Android no deja que una app active su propio servicio de accesibilidad: la primera vez se abre su página en
         // Ajustes; ya activado, se prende y apaga acá mismo.
-        Row(Modifier.padding(top = 6.dp)) {
+        Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (!enabled) PixelButton("ACTIVAR", { openAccessibilityPage(context) })
             else ToggleChip("Escaneo asistido", settings.autoScroll, { v -> container.settings.update { it.copy(autoScroll = v) } })
+        }
+        GbaText("Lo que se lee completo (especie, PC e IV exactos) se guarda en la caja al tocar la burbuja.",
+            size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 8.dp))
+        Row(Modifier.padding(top = 6.dp)) {
+            ToggleChip("Guardar automáticamente", settings.autoSave, { v -> container.settings.update { it.copy(autoSave = v) } })
         }
         LiveTestExport()
     }
@@ -297,7 +302,7 @@ private fun ReleaseInfo(r: AppRelease) {
  * Abre la página del servicio de accesibilidad de EsmeraldaGO en Ajustes (Android 13+ lo permite con su
  * componente); si el sistema no la ofrece, la lista general de Accesibilidad.
  */
-private fun openAccessibilityPage(context: android.content.Context) {
+internal fun openAccessibilityPage(context: android.content.Context) {
     val component = android.content.ComponentName(context, LiveGestureService::class.java).flattenToString()
     val details = android.content.Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
         .putExtra(android.content.Intent.EXTRA_COMPONENT_NAME, component)

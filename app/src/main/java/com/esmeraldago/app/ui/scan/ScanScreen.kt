@@ -1,6 +1,5 @@
 package com.esmeraldago.app.ui.scan
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,25 +20,37 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.esmeraldago.app.live.LiveGestureService
+import com.esmeraldago.app.live.LiveScanService
+import com.esmeraldago.app.live.ivColor
+import com.esmeraldago.app.live.openPokemonGo
+import com.esmeraldago.app.live.rememberLiveScanStarter
+import com.esmeraldago.app.scan.DraftStatus
 import com.esmeraldago.app.scan.ScanDraft
 import com.esmeraldago.app.ui.common.LocalContainer
 import com.esmeraldago.app.ui.common.MoveLabel
 import com.esmeraldago.app.ui.common.SpeciesPickerDialog
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.WithGame
+import com.esmeraldago.app.ui.common.displayName
 import com.esmeraldago.app.ui.common.fmtLevel
+import com.esmeraldago.app.ui.settings.openAccessibilityPage
 import com.esmeraldago.app.ui.theme.DialogBox
 import com.esmeraldago.app.ui.theme.GbaText
 import com.esmeraldago.app.ui.theme.Pal
@@ -49,10 +60,13 @@ import com.esmeraldago.app.ui.theme.SmallPixelShape
 import com.esmeraldago.app.ui.theme.TitleBar
 import com.esmeraldago.app.ui.theme.ToggleChip
 import com.esmeraldago.app.ui.theme.WindowBox
-import com.esmeraldago.app.ui.theme.YesNoDialog
 import com.esmeraldago.core.GameIndex
-import com.esmeraldago.core.scan.ScreenType
+import kotlinx.coroutines.launch
 
+/**
+ * Escanear: el modo en vivo arriba; debajo, lo que falta completar o decidir (se conserva aunque se detenga el
+ * escaneo o se cierre la app) y lo que ya se guardó en esta sesión.
+ */
 @Composable
 fun ScanScreen(onBack: () -> Unit) {
     val container = LocalContainer.current
@@ -61,78 +75,102 @@ fun ScanScreen(onBack: () -> Unit) {
     val failures by session.failures.collectAsState()
     val pending by session.pending.collectAsState()
     val processed by session.processed.collectAsState()
+    val boxItems by container.collection.items.collectAsState()
     var pickingFor by remember { mutableStateOf<Int?>(null) }
-    var confirmExit by remember { mutableStateOf(false) }
-    var showHelp by remember { mutableStateOf(drafts.isEmpty()) }
-    val liveRunning by com.esmeraldago.app.live.LiveScanService.running.collectAsState()
-    val startLive = com.esmeraldago.app.live.rememberLiveScanStarter()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    var collapsed by remember { mutableStateOf(setOf<Int>()) }
+    val liveRunning by LiveScanService.running.collectAsState()
+    val startLive = rememberLiveScanStarter()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // El usuario activa la accesibilidad en Ajustes del sistema: se vuelve a mirar al regresar.
+    var assisted by remember { mutableStateOf(LiveGestureService.isEnabled(context)) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) assisted = LiveGestureService.isEnabled(context) }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(50)) { uris ->
         session.enqueue(uris)
     }
-    // Volver sin guardar: preguntar (los borradores igual se conservan en la sesión).
-    BackHandler(enabled = drafts.isNotEmpty() || pending > 0) { confirmExit = true }
+    val open = drafts.filter { !it.saved }
+    val done = drafts.filter { it.saved }
 
     Column(Modifier.fillMaxSize()) {
-        TitleBar("Escanear", onBack = { if (drafts.isNotEmpty() || pending > 0) confirmExit = true else onBack() })
+        TitleBar("Escanear", onBack = onBack)
         WithGame { idx, _ ->
             Box(Modifier.weight(1f)) {
                 LazyColumn(Modifier.fillMaxSize()) {
-                    // El juego puede estar en inglés o en español: el lector entiende los dos.
-                    when {
-                        pending > 0 -> "Leyendo capturas: $processed de ${processed + pending}."
-                        drafts.isNotEmpty() -> "Se guardan los marcados con ■."
-                        else -> null
-                    }?.let { item { DialogBox(it, Modifier.padding(8.dp)) } }
+                    if (pending > 0) item { DialogBox("Leyendo capturas: $processed de ${processed + pending}.", Modifier.padding(8.dp)) }
                     item {
-                        // Escaneo en vivo: burbuja flotante sobre Pokémon GO (como Poke Genie).
                         WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-                            GbaText("EN VIVO SOBRE POKéMON GO", size = 16.sp)
-                            GbaText(
-                                if (liveRunning) "Burbuja activa sobre Pokémon GO."
-                                else "Una burbuja flotante lee la ficha del Pokémon dentro del juego, sin capturas.",
+                            GbaText(if (liveRunning) "En vivo: activo" else "En vivo sobre Pokémon GO", size = 16.sp)
+                            if (!liveRunning) GbaText(
+                                "Al tocar la burbuja se lee el Pokémon en pantalla. Si la lectura está completa, se guarda en la caja.",
                                 size = 12.sp, color = Pal.Muted,
                             )
                             Spacer(Modifier.heightIn(min = 6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (liveRunning) {
-                                    PixelButton("ABRIR POKéMON GO", { com.esmeraldago.app.live.openPokemonGo(context) })
-                                    PixelButton("DETENER", { com.esmeraldago.app.live.LiveScanService.stop(context) }, color = Pal.Red)
+                                    PixelButton("ABRIR POKéMON GO", { openPokemonGo(context) }, Modifier.weight(2f))
+                                    PixelButton("DETENER", { LiveScanService.stop(context) }, Modifier.weight(1f), color = Pal.Red)
                                 } else {
-                                    PixelButton("EMPEZAR EN VIVO", startLive, color = Pal.Dynamax)
+                                    PixelButton("EMPEZAR EN VIVO", startLive, Modifier.weight(1f), color = Pal.Dynamax)
                                 }
+                            }
+                            if (!assisted) {
+                                // Recomendado, no obligatorio: sin él la valoración se elige a mano.
+                                GbaText("Escaneo asistido (recomendado): lee los ataques y la valoración solo. Sin él, la valoración se elige a mano.",
+                                    size = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                                Row(Modifier.padding(top = 4.dp)) { PixelButton("ACTIVAR", { openAccessibilityPage(context) }) }
+                                GbaText("Si Android no permite activarlo: Información de la app › ⋮ › Permitir ajustes restringidos.",
+                                    size = 11.sp, color = Pal.Muted, modifier = Modifier.padding(top = 4.dp))
                             }
                         }
                     }
-                    if (failures.isNotEmpty()) item {
-                        WindowBox(Modifier.fillMaxWidth().padding(8.dp)) {
-                            SectionTitle("No reconocidas (${failures.size})")
-                            failures.forEach { GbaText("Captura ${it.index}: ${it.reason}", size = 12.sp, color = Pal.Red) }
-                        }
-                    }
-                    items(drafts, key = { it.key }) { d ->
-                        DraftCard(d, idx,
-                            onChange = { transform -> session.update(d.key, transform) },
-                            onRemove = { session.remove(d.key) },
+                    if (open.isNotEmpty()) item { SectionTitle("Por completar (${open.size})", Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) }
+                    items(open, key = { it.key }) { d ->
+                        OpenCard(
+                            d, idx,
+                            expanded = d.key !in collapsed,
+                            duplicateName = d.duplicateOf?.let { uid -> boxItems.firstOrNull { it.uid == uid } }?.let { idx[it.speciesId]?.displayName },
+                            onToggle = { collapsed = if (d.key in collapsed) collapsed - d.key else collapsed + d.key },
                             onPickSpecies = { pickingFor = d.key },
-                            onSetCp = { cp -> session.setCp(d, cp, idx) })
+                            onSetCp = { cp -> session.setCp(d, cp, idx) },
+                            onSave = { scope.launch { session.settle(d.key, idx) } },
+                        )
+                    }
+                    if (done.isNotEmpty() || failures.isNotEmpty())
+                        item { SectionTitle("En esta sesión (${done.size + failures.size})", Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) }
+                    items(done, key = { it.key }) { d -> DoneRow(d) { session.undo(d.key) } }
+                    items(failures) { f ->
+                        WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), padding = 6.dp) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    GbaText("No reconocida", size = 14.sp)
+                                    GbaText(f.reason, size = 12.sp, color = Pal.Muted)
+                                }
+                                IconX { session.removeFailure(f) }
+                            }
+                        }
                     }
                     item { Spacer(Modifier.heightIn(min = 90.dp)) }
                 }
             }
             // Barra inferior fija
-            val n = drafts.count { it.include }
+            val ready = open.count { it.status == DraftStatus.READY }
             WindowBox(Modifier.fillMaxWidth().padding(8.dp), padding = 6.dp) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PixelButton("ELEGIR CAPTURAS", {
+                    PixelButton("DESDE CAPTURAS", {
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     }, Modifier.weight(1f))
-                    PixelButton(if (n > 0) "GUARDAR $n" else "GUARDAR", {
-                        val saved = session.save(container.collection)
-                        container.notify("$saved Pokémon guardados en la caja.")
-                        onBack()
-                    }, Modifier.weight(1f), color = Pal.Blue, enabled = n > 0 && pending == 0)
+                    if (ready > 0) PixelButton("GUARDAR $ready", {
+                        scope.launch {
+                            val n = session.saveReady()
+                            container.notify(if (n == 1) "1 Pokémon guardado en la caja." else "$n Pokémon guardados en la caja.")
+                        }
+                    }, Modifier.weight(1f), color = Pal.Blue, enabled = pending == 0)
                 }
             }
 
@@ -150,12 +188,43 @@ fun ScanScreen(onBack: () -> Unit) {
             }
         }
     }
+}
 
-    if (confirmExit) YesNoDialog(
-        "Hay Pokémon sin guardar. ¿Salir? Quedan pendientes para la próxima vez.",
-        onYes = { confirmExit = false; onBack() },
-        onNo = { confirmExit = false },
-    )
+@Composable
+private fun IconX(onClick: () -> Unit) {
+    Box(Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        GbaText("×", size = 18.sp, color = Pal.Muted)
+    }
+}
+
+/** Resumen de una fila: sprite, especie, PC, IV% y en qué quedó. */
+@Composable
+private fun Summary(d: ScanDraft, statusText: String, statusColor: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    val p = d.pokemon
+    val s = d.result.species
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (s != null) Sprite(p, s, 44.dp)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Row {
+                GbaText((s?.displayName ?: "¿Especie?") + " · PC ${d.result.cp ?: "—"} · ", size = 14.sp)
+                val exact = d.result.ivExact || d.ivPicked
+                GbaText(if (exact) "${p.ivPercent}%" else d.result.ivRangeText, size = 14.sp, color = if (exact) ivColor(p) else Pal.Warn)
+            }
+            GbaText(statusText, size = 12.sp, color = statusColor)
+        }
+    }
+}
+
+@Composable
+private fun DoneRow(d: ScanDraft, onUndo: () -> Unit) {
+    WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), padding = 6.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val updated = d.status == DraftStatus.UPDATED
+            Summary(d, if (updated) "Actualizado en la caja." else "Guardado.", if (updated) Pal.Blue else Pal.Good, Modifier.weight(1f))
+            PixelButton(if (updated) "REVERTIR" else "DESHACER", onUndo, color = Pal.Muted)
+        }
+    }
 }
 
 @Composable
@@ -186,65 +255,45 @@ private fun CpField(current: Int?, onSetCp: (Int) -> Unit) {
     }
 }
 
+/** Un Pokémon sin guardar: lo que falta se completa acá mismo. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DraftCard(
-    d: ScanDraft, idx: GameIndex, onChange: ((ScanDraft) -> ScanDraft) -> Unit, onRemove: () -> Unit,
-    onPickSpecies: () -> Unit,
-    onSetCp: (Int) -> Unit = {},
+private fun OpenCard(
+    d: ScanDraft, idx: GameIndex, expanded: Boolean, duplicateName: String?,
+    onToggle: () -> Unit, onPickSpecies: () -> Unit, onSetCp: (Int) -> Unit, onSave: () -> Unit,
 ) {
+    val session = LocalContainer.current.scan
     val p = d.pokemon
     val s = d.result.species
+    val (statusText, statusColor) = when (d.status) {
+        DraftStatus.DUPLICATE -> "Posible duplicado de ${duplicateName ?: "otro"} de la caja." to Pal.Warn
+        DraftStatus.INCOMPLETE -> (d.missing ?: "") to Pal.Warn
+        else -> (if (d.ivPicked) "IV elegidos a mano." else "Lectura completa.") to Pal.Muted
+    }
     WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
-                    .toggleable(d.include, role = Role.Checkbox) { v -> onChange { it.copy(include = v) } },
-                contentAlignment = Alignment.Center,
-            ) { GbaText(if (d.include) "■" else "□", size = 24.sp) }
-            if (s != null) Sprite(p, s, 56.dp)
-            Spacer(Modifier.width(6.dp))
-            Column(Modifier.weight(1f).clickable(onClick = onPickSpecies).padding(vertical = 4.dp)) {
-                GbaText((s?.name ?: "¿Especie?") + " ▼", size = 16.sp)
-                GbaText("PC ${d.result.cp ?: "?"} · PS ${d.result.hp ?: "?"} · Nv ${fmtLevel(p.level)}", size = 13.sp)
-                p.nickname?.let { GbaText("Apodo: $it", size = 12.sp, color = Pal.Muted) }
-                GbaText(
-                    when {
-                        d.sources > 1 -> "Detalle + valoración"
-                        d.result.screen == ScreenType.APPRAISAL -> "Solo valoración: faltan los ataques"
-                        else -> "Solo ficha: falta la valoración"
-                    },
-                    size = 12.sp, color = Pal.Muted,
-                )
-            }
-            Box(Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
-                GbaText("×", size = 18.sp, color = Pal.Muted)
-            }
-        }
-        d.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Warn) }
-        // PC tapado o reconstruido: se puede escribir y se recalcula todo con lo que ya se leyó.
+        Summary(d, statusText, statusColor, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onToggle))
+        if (!expanded) return@WindowBox
+
+        Row(Modifier.padding(top = 4.dp)) { PixelButton("CAMBIAR ESPECIE", onPickSpecies, color = Pal.Muted) }
+        if (d.result.speciesAmbiguous || s == null) d.result.problem?.let { GbaText(it, size = 12.sp, color = Pal.Warn) }
+        // PC tapado o reconstruido: se escribe y se recalcula todo con lo que ya se leyó.
         if (d.result.cp == null || d.result.cpInferred) CpField(d.result.cp, onSetCp)
         val c = d.result.candidates
         when {
             s == null || c.isEmpty() -> Unit
-            d.result.ivExact -> GbaText("IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} (${p.ivPercent}%), exactos", size = 15.sp)
+            d.result.ivExact -> GbaText("IV ${p.ivAtk}/${p.ivDef}/${p.ivSta} · Nv ${fmtLevel(p.level)}", size = 14.sp)
             else -> {
-                GbaText("IV ${d.result.ivRangeText} · ${c.size} combinaciones. La valoración las reduce a una.",
-                    size = 12.sp, color = Pal.Warn)
+                GbaText("Combinaciones posibles:", size = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     c.sortedByDescending { it.ivs.total }.take(8).forEach { cand ->
-                        val sel = cand.ivs.atk == p.ivAtk && cand.ivs.def == p.ivDef && cand.ivs.sta == p.ivSta && cand.level == p.level
+                        val sel = d.ivPicked && cand.ivs.atk == p.ivAtk && cand.ivs.def == p.ivDef && cand.ivs.sta == p.ivSta && cand.level == p.level
                         Box(
-                            Modifier.heightIn(min = 40.dp)
+                            Modifier.heightIn(min = 44.dp)
                                 .background(if (sel) Pal.Select else Pal.Window, SmallPixelShape)
-                                .clickable {
-                                    // Elegir una combinación a mano cuenta como confirmación.
-                                    onChange { cur -> cur.copy(include = true, pokemon = cur.pokemon.copy(level = cand.level, ivAtk = cand.ivs.atk,
-                                        ivDef = cand.ivs.def, ivSta = cand.ivs.sta, ivExact = false)) }
-                                }
+                                .clickable { session.pickIvs(d.key, cand) }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center,
-                        ) { GbaText("${cand.ivs} Nv${fmtLevel(cand.level)}", size = 13.sp) }
+                        ) { GbaText("${cand.ivs} · Nv ${fmtLevel(cand.level)} · ${cand.ivs.percent}%", size = 13.sp) }
                     }
                 }
             }
@@ -252,13 +301,25 @@ private fun DraftCard(
         if (s != null) {
             listOfNotNull(idx.move(p.fast)).plus(p.chargedMoves.mapNotNull { idx.move(it) }).forEach { MoveLabel(it, s, 12) }
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            ToggleChip("Oscuro", p.shadow, { v -> onChange { cur -> cur.copy(pokemon = cur.pokemon.copy(shadow = v, purified = false)) } })
-            ToggleChip("Purificado", p.purified, { v -> onChange { cur -> cur.copy(pokemon = cur.pokemon.copy(purified = v, shadow = false)) } })
-            ToggleChip("Con suerte", p.lucky, { v -> onChange { cur -> cur.copy(pokemon = cur.pokemon.copy(lucky = v)) } })
-            ToggleChip("Shiny", p.shiny, { v -> onChange { cur -> cur.copy(pokemon = cur.pokemon.copy(shiny = v)) } })
-            ToggleChip("Dinamax", p.dynamax, { v -> onChange { cur -> cur.copy(pokemon = cur.pokemon.copy(dynamax = v, gigantamax = false)) } })
-            ToggleChip("Gigamax", p.gigantamax, { v -> onChange { cur -> cur.copy(pokemon = cur.pokemon.copy(gigantamax = v, dynamax = false)) } })
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(top = 4.dp)) {
+            fun change(f: (com.esmeraldago.core.model.OwnedPokemon) -> com.esmeraldago.core.model.OwnedPokemon) =
+                session.update(d.key) { cur -> cur.copy(pokemon = f(cur.pokemon)) }
+            ToggleChip("Oscuro", p.shadow, { v -> change { it.copy(shadow = v, purified = false) } })
+            ToggleChip("Purificado", p.purified, { v -> change { it.copy(purified = v, shadow = false) } })
+            ToggleChip("Con suerte", p.lucky, { v -> change { it.copy(lucky = v) } })
+            ToggleChip("Shiny", p.shiny, { v -> change { it.copy(shiny = v) } })
+            ToggleChip("Dinamax", p.dynamax, { v -> change { it.copy(dynamax = v, gigantamax = false) } })
+            ToggleChip("Gigamax", p.gigantamax, { v -> change { it.copy(gigantamax = v, dynamax = false) } })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            if (d.status == DraftStatus.DUPLICATE) {
+                PixelButton("REEMPLAZAR", { session.replace(d.key) }, Modifier.weight(1f))
+                PixelButton("AGREGAR", { session.addAnyway(d.key) }, Modifier.weight(1f))
+            } else {
+                PixelButton("GUARDAR", onSave, Modifier.weight(2f), color = Pal.Blue, enabled = d.missing == null)
+            }
+            PixelButton("DESCARTAR", { session.remove(d.key) }, Modifier.weight(1f), color = Pal.Red)
         }
     }
 }
