@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -25,6 +28,9 @@ import java.net.URL
 private data class UpdateManifest(val version: String, val notes: String = "", val apk: String, val size: Long = 0)
 
 data class AppRelease(val version: String, val notes: String, val apkUrl: String, val size: Long)
+
+/** Una versión publicada, para la pantalla de novedades: [date] en formato ISO ("2026-10-28T01:59:36Z"). */
+data class ReleaseNote(val version: String, val date: String, val notes: String)
 
 sealed interface UpdateState {
     data object Idle : UpdateState
@@ -133,6 +139,27 @@ class UpdateRepository(private val context: Context, private val scope: Coroutin
         val m = GameDataSources.json.decodeFromString(UpdateManifest.serializer(), text)
         return AppRelease(m.version, m.notes.trim(), "$base/download/v${m.version}/${m.apk}", m.size)
     }
+
+    /**
+     * Todas las versiones publicadas con sus notas, de la más nueva a la más vieja. Usa la API de GitHub (60
+     * consultas por hora sin login): solo se consulta al abrir la pantalla de novedades.
+     */
+    suspend fun history(): Result<List<ReleaseNote>> = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        runCatching {
+            val text = GameDataSources.open("https://api.github.com/repos/${BuildConfig.UPDATE_REPO}/releases?per_page=100")
+                .use { it.reader().readText() }
+            GameDataSources.json.parseToJsonElement(text).jsonArray.map { it.jsonObject }.map { r ->
+                ReleaseNote(
+                    version = r.text("tag_name").removePrefix("v"),
+                    date = r.text("published_at"),
+                    notes = r.text("body").trim(),
+                )
+            }
+        }
+    }
+
+    private fun kotlinx.serialization.json.JsonObject.text(key: String) =
+        (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull.orEmpty()
 
     private fun fetch(release: AppRelease, dest: File) {
         val part = File(dest.parentFile, dest.name + ".part")

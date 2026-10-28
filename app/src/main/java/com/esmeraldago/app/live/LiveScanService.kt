@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.NotificationCompat
@@ -116,12 +117,29 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     private fun setOverlaysVisible(visible: Boolean) {
         log(if (visible) "Pokémon GO adelante: se muestra la burbuja" else "otra app adelante: se oculta la burbuja")
-        if (visible) {
-            bubble?.let { v -> runCatching { wm.addView(v, bubbleParams) }.onFailure { log("no se pudo mostrar la burbuja: ${it.message}") } }
-            if (panelWanted) panel?.let { v -> runCatching { wm.addView(v, panelParams) } }
-        } else {
-            listOfNotNull(bubble, panel).forEach { runCatching { wm.removeView(it) } }
-        }
+        overlays().forEach { (v, p) -> if (visible) moveBack(v, p) else moveAway(v, p) }
+    }
+
+    /*
+     * Ocultar = correr la ventana fuera de la pantalla, nunca quitarla: una ComposeView quitada y vuelta a poner
+     * dejaba de recibir toques (la burbuja no respondía después del primer escaneo). Fuera de la pantalla tampoco
+     * aparece en la captura (las ventanas seguras salen como un rectángulo negro donde estén).
+     */
+    private val homePosition = HashMap<View, Pair<Int, Int>>()
+
+    private fun overlays() = listOfNotNull(bubble?.let { v -> bubbleParams?.let { v to it } }, panel?.let { v -> panelParams?.let { v to it } })
+
+    private fun moveAway(v: View, p: WindowManager.LayoutParams) {
+        if (v in homePosition || !v.isAttachedToWindow) return
+        homePosition[v] = p.x to p.y
+        p.x = -20_000; p.y = -20_000
+        runCatching { wm.updateViewLayout(v, p) }.onFailure { log("no se pudo ocultar una ventana: ${it.message}") }
+    }
+
+    private fun moveBack(v: View, p: WindowManager.LayoutParams) {
+        val (x, y) = homePosition.remove(v) ?: return
+        p.x = x; p.y = y
+        runCatching { wm.updateViewLayout(v, p) }.onFailure { log("no se pudo volver a mostrar una ventana: ${it.message}") }
     }
 
     // ------------------------------------------------------------------ acciones
@@ -299,17 +317,17 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     /**
      * Las ventanas seguras (FLAG_SECURE) no se leen, pero en la captura aparecen como un rectángulo NEGRO:
-     * con el panel abierto arriba se tapaba el PC y el nombre. Se quitan de la pantalla, se espera un
-     * fotograma limpio, se captura y se vuelven a poner.
+     * con el panel abierto arriba se tapaba el PC y el nombre. Se corren fuera de la pantalla, se espera un
+     * fotograma limpio, se captura y se vuelven a su lugar.
      */
     private suspend fun <T> withOverlaysHidden(block: suspend () -> T): T {
-        val views = listOfNotNull(bubble?.let { it to bubbleParams }, panel?.let { it to panelParams })
-        views.forEach { (v, _) -> runCatching { wm.removeView(v) } }
+        val views = overlays()
+        views.forEach { (v, p) -> moveAway(v, p) }
         delay(300) // que la pantalla se redibuje sin la burbuja ni el panel
         return try {
             block()
         } finally {
-            if (!away) views.forEach { (v, p) -> runCatching { wm.addView(v, p) }.onFailure { log("no se pudo volver a mostrar una ventana: ${it.message}") } }
+            if (!away) views.forEach { (v, p) -> moveBack(v, p) }
             else log("después de leer: Pokémon GO no está adelante, la burbuja queda oculta")
         }
     }
@@ -405,10 +423,13 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
                 y = (resources.displayMetrics.density * 24).toInt()
             }
             panelParams = params
-            panel = composeView { LivePanel(container = container, service = this) }
-            if (!away) wm.addView(panel, params)
+            val view = composeView { LivePanel(container = container, service = this) }
+            panel = view
+            wm.addView(view, params)
+            // Lejos de Pokémon GO se crea igual, pero fuera de la pantalla (vuelve con la burbuja).
+            if (away) view.post { moveAway(view, params) }
         } else if (!show && panel != null) {
-            runCatching { wm.removeView(panel) }
+            panel?.let { v -> homePosition.remove(v); runCatching { wm.removeView(v) } }
             panel = null
         }
         _panelVisible.value = show

@@ -202,7 +202,8 @@ private fun AppNav() {
             TeamsScreen(back, onOwned = { nav.navigate("owned/$it") }, onAdvice = { nav.navigate("advice") },
                 onScan = { nav.navigate("scan") })
         }
-        composable("settings") { SettingsScreen(back) }
+        composable("settings") { SettingsScreen(back, onChangelog = { nav.navigate("changelog") }) }
+        composable("changelog") { com.esmeraldago.app.ui.settings.ChangelogScreen(back) }
         composable("guide") { com.esmeraldago.app.ui.guide.GuideScreen(back) }
         composable("types") { com.esmeraldago.app.ui.types.TypesScreen(back) }
     }

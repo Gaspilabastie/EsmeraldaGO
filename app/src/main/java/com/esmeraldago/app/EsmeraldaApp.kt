@@ -37,7 +37,7 @@ class EsmeraldaApp : Application(), ImageLoaderFactory {
         // Recién actualizada: se cierra el aviso de "se actualizó" y se ofrecen las novedades.
         getSystemService(android.app.NotificationManager::class.java).cancel(com.esmeraldago.app.data.UpdatedReceiver.NOTIFICATION_ID)
         container.updates.takeFreshNotes()?.let { (v, _) ->
-            container.notify("EsmeraldaGO se actualizó a $v.", "NOVEDADES") { container.pendingNavigation.value = "settings" }
+            container.notify("EsmeraldaGO se actualizó a $v.", "NOVEDADES") { container.pendingNavigation.value = "changelog" }
         }
         // Versión nueva: con Wi-Fi se baja e instala sola (la pantalla de inicio muestra el avance); con datos
         // móviles, se ofrece.

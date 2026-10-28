@@ -46,7 +46,7 @@ private fun Modifier.inputFrame(): Modifier = this
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onChangelog: () -> Unit = {}) {
     val container = LocalContainer.current
     val settings by container.settings.state.collectAsState()
     val game by container.game.state.collectAsState()
@@ -56,7 +56,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TitleBar("Opciones", onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppUpdateBox()
+            AppUpdateBox(onChangelog)
             BackupBox()
 
             LiveScanBox()
@@ -120,7 +120,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun AppUpdateBox() {
+private fun AppUpdateBox(onChangelog: () -> Unit) {
     val container = LocalContainer.current
     val updates = container.updates
     val state by updates.state.collectAsState()
@@ -156,7 +156,7 @@ private fun AppUpdateBox() {
                 else -> PixelButton(if (state == UpdateState.Checking) "BUSCANDO…" else "BUSCAR ACTUALIZACIÓN",
                     { updates.check() }, enabled = state != UpdateState.Checking)
             }
-            PixelButton("HISTORIAL", { uriHandler.openUri(updates.repoUrl) }, color = Pal.Muted)
+            PixelButton("NOVEDADES", onChangelog, color = Pal.Muted)
         }
         ToggleChip("Actualizar sola con Wi-Fi", settings.autoUpdate, { v -> container.settings.update { it.copy(autoUpdate = v) } },
             Modifier.padding(top = 6.dp))
