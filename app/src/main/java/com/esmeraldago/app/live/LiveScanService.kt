@@ -123,6 +123,19 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
 
     // ------------------------------------------------------------------ acciones
 
+    /**
+     * Registro de cada paso en el log de Android (etiqueta "EsmLive"), para revisar una prueba después con
+     * `adb logcat -s EsmLive`. No se muestra en la app.
+     */
+    private fun log(msg: String) { android.util.Log.i("EsmLive", msg) }
+
+    private fun summary(a: OcrScanner.Analysis?): String = a?.result?.let { r ->
+        "${r.screen} ${r.species?.id ?: "?"} PC ${r.cp ?: "?"}${if (r.cpInferred) "*" else ""} PS ${r.hp ?: "?"} " +
+            "rápido ${r.fast ?: "-"} cargados ${r.charged.size} IV ${if (r.ivExact) "exactos" else "${r.candidates.size} opciones"}" +
+            (r.appraisal?.let { " valoración ${it}" } ?: "") + (if (a.bars != null) " barras" else "") +
+            (r.problem?.let { " problema: $it" } ?: "")
+    } ?: "sin imagen"
+
     /** Lee lo que hay en pantalla ahora (un toque en la burbuja). */
     fun scanNow() {
         if (scanJob?.isActive == true) return
@@ -131,7 +144,9 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             val idx = container.scan.idx()
             val parser = container.scan.parserFor(idx)
             pendingAppraisal = null
+            log("— escaneo pedido")
             val a = withOverlaysHidden { captureBest(parser) }
+            log("resultado: ${summary(a)}" + (pendingAppraisal?.let { " + valoración: ${summary(it)}" } ?: ""))
             when {
                 a == null -> _status.value = "Sin imagen de la pantalla todavía."
                 a.result.screen == ScreenType.UNKNOWN -> {
@@ -156,7 +171,8 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
      * - si no se vieron los ataques y el servicio de accesibilidad está activo, baja la ficha, los lee y vuelve.
      */
     private suspend fun captureBest(parser: com.esmeraldago.core.scan.ScreenParser): OcrScanner.Analysis? {
-        var best = analyzeFrame(parser) ?: return null
+        var best = analyzeFrame(parser) ?: return null.also { log("primer fotograma: sin imagen") }
+        log("primer fotograma: ${summary(best)}")
         if (best.result.screen == ScreenType.UNKNOWN) return best
         // PC tapado o que no cuadra: el Pokémon se mueve y tapa dígitos distintos en cada fotograma. Se usan
         // TODOS (no "el mejor"): el parser ubica cada dígito en su casillero y vota (ScreenParser.parseFrames).
@@ -167,13 +183,16 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
                 analyzeFrame(parser)?.takeIf { it.result.screen != ScreenType.UNKNOWN && it.result.hp == best.result.hp }?.let { frames += it }
             }
             if (frames.size > 1) best = best.copy(result = parser.parseFrames(frames.map { it.lines }, best.bars))
+            log("PC tapado o dudoso: ${frames.size} fotogramas → ${summary(best)}")
         }
         val gestures = LiveGestureService.instance
+        log("accesibilidad ${if (gestures != null) "activa" else "inactiva"}, escaneo asistido ${container.settings.state.value.autoScroll}")
         if (best.result.screen == ScreenType.DETAIL && best.result.fast == null && gestures != null &&
             container.settings.state.value.autoScroll && gestures.swipe(0.78f, 0.38f)
         ) {
             delay(900) // que termine el desplazamiento
             val lower = analyzeFrame(parser)
+            log("bajó la ficha: ${summary(lower)}")
             gestures.swipe(0.38f, 0.78f)
             // La parte de abajo no muestra el PC (y casi nunca los PS); si muestra otros PS, es otro Pokémon.
             if (lower != null && (lower.result.hp == null || lower.result.hp == best.result.hp)) {
@@ -203,10 +222,12 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         val words = listOf("appraise", "valorar", "evaluar", "tasar")
         // Dos posiciones posibles del botón de menú (con y sin la barra de navegación de 3 botones).
         for ((x, y) in listOf(0.86f to 0.925f, 0.86f to 0.89f)) {
-            if (!g.tap(x, y)) return null
+            if (!g.tap(x, y)) return null.also { log("valoración: no se pudo tocar el menú ($x, $y)") }
             delay(700)
-            val menu = analyzeFrame(parser) ?: return null
+            val menu = analyzeFrame(parser) ?: return null.also { log("valoración: sin imagen tras tocar el menú") }
             val item = menu.lines.firstOrNull { l -> words.any { l.text.lowercase().contains(it) } }
+            log("valoración: toque en ($x, $y) → ${menu.result.screen}, opción ${item?.text ?: "no encontrada"}; " +
+                "textos: ${menu.lines.take(12).joinToString(" | ") { it.text }}")
             if (item == null) {
                 // El toque no abrió el menú: si cambió la pantalla, se vuelve; si no, se prueba la otra posición.
                 if (menu.result.screen != ScreenType.DETAIL) { g.back(); delay(500); return null }
@@ -214,8 +235,9 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             }
             g.tap((item.left + item.right) / 2, (item.top + item.bottom) / 2)
             delay(1200)
-            repeat(5) {
+            repeat(5) { step ->
                 val a = analyzeFrame(parser)
+                log("valoración: paso ${step + 1} → ${summary(a)}")
                 if (a != null && a.result.screen == ScreenType.APPRAISAL && a.bars != null) {
                     g.tap(0.5f, 0.85f) // cierra la valoración y vuelve a la ficha
                     delay(800)
@@ -224,9 +246,11 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
                 g.tap(0.5f, 0.85f) // avanza el diálogo del líder de equipo
                 delay(900)
             }
+            log("valoración: no aparecieron las barras; se vuelve atrás")
             g.back(); delay(500)
             return null
         }
+        log("valoración: el menú no se abrió en ninguna de las dos posiciones")
         return null
     }
 
@@ -235,6 +259,7 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
         return try {
             container.ocr.analyze(bmp, parser)
         } catch (t: Throwable) {
+            log("error al leer el fotograma: ${t.javaClass.simpleName}: ${t.message}")
             null
         } finally {
             withContext(Dispatchers.Default) { bmp.recycle() }
