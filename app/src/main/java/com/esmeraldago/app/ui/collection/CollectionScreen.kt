@@ -100,11 +100,7 @@ fun CollectionScreen(onBack: () -> Unit, onOpen: (String) -> Unit, onAdd: () -> 
                             align = androidx.compose.ui.text.style.TextAlign.Center)
                         GbaText("PC${p.cp}", size = 12.sp, maxLines = 1)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            val color = when {
-                                p.ivPercent >= 98 -> Pal.Good
-                                p.ivPercent >= 80 -> Pal.Gold
-                                else -> Pal.Muted
-                            }
+                            val color = com.esmeraldago.app.live.ivColor(p)
                             GbaText((if (!p.ivExact) "≈" else "") + "${p.ivPercent}%", size = 12.sp, color = color, maxLines = 1)
                         }
                     }

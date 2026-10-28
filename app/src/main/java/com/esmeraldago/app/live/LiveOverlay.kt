@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.esmeraldago.app.AppContainer
 import com.esmeraldago.app.data.GameState
 import com.esmeraldago.app.scan.DraftStatus
+import com.esmeraldago.app.scan.DupKind
 import com.esmeraldago.app.ui.common.ProvideContainer
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.displayName
@@ -43,18 +44,24 @@ import com.esmeraldago.app.ui.theme.ToggleChip
 import com.esmeraldago.app.ui.theme.WindowBox
 import com.esmeraldago.core.model.OwnedPokemon
 
-/** Color del IV% (el mismo que en la caja). */
-internal fun ivColor(p: OwnedPokemon) = when {
-    p.ivPercent >= 98 -> Pal.Good
-    p.ivPercent >= 80 -> Pal.Gold
-    else -> Pal.Muted
+/** Color del IV% (el mismo que en la caja): verde los casi perfectos; el resto, texto normal. */
+internal fun ivColor(p: OwnedPokemon) = if (p.ivPercent >= 98) Pal.Good else Pal.Text
+
+/** La pregunta cuando se parece a uno de la caja. */
+internal fun duplicateQuestion(kind: DupKind?, name: String?): String {
+    val n = name ?: "Pokémon"
+    return when (kind) {
+        DupKind.EVOLVED -> "¿Es el $n de la caja, evolucionado?"
+        DupKind.PURIFIED -> "¿Es el $n oscuro de la caja, ya purificado?"
+        else -> "¿Es el mismo $n de la caja?"
+    }
 }
+
+internal fun updatedText(change: String?) = "Ya estaba en la caja; se actualizó" + (change?.let { ": $it." } ?: ".")
 
 /** Burbuja flotante: tocar = escanear; mantener apretado = menú; arrastrar = moverla. */
 @Composable
 fun LiveBubble(service: LiveScanService, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit) {
-    val continuous by LiveScanService.continuous.collectAsState()
-    val detected by LiveScanService.detected.collectAsState()
     val mark by LiveScanService.mark.collectAsState()
     EmeraldTheme {
         Box(
@@ -89,15 +96,7 @@ fun LiveBubble(service: LiveScanService, onDrag: (Float, Float) -> Unit, onDragE
                     ) { GbaText(mark!!, size = 15.sp, color = Color(0xFF303030)) }
                 }
             }
-            if (continuous) Badge(detected.toString(), Pal.Dynamax, Modifier.align(Alignment.TopEnd))
         }
-    }
-}
-
-@Composable
-private fun Badge(text: String, color: Color, modifier: Modifier) {
-    Box(modifier.background(color, CircleShape).padding(horizontal = 6.dp, vertical = 1.dp)) {
-        GbaText(text, size = 12.sp, color = Pal.TextLight)
     }
 }
 
@@ -175,9 +174,10 @@ fun LiveResult(container: AppContainer, service: LiveScanService) {
                             PixelButton("DESHACER", { container.scan.undo(draft.key) }, color = Pal.Muted)
                         }
                         DraftStatus.UPDATED -> {
-                            GbaText("Actualizado en la caja.", size = 14.sp, color = Pal.Blue, modifier = Modifier.weight(1f))
+                            GbaText(updatedText(draft.change), size = 14.sp, color = Pal.Blue, modifier = Modifier.weight(1f))
                             PixelButton("DESHACER", { container.scan.undo(draft.key) }, color = Pal.Muted)
                         }
+                        DraftStatus.IN_BOX -> GbaText("Ya está en la caja.", size = 14.sp, color = Pal.Good, modifier = Modifier.weight(1f))
                         DraftStatus.READY -> {
                             GbaText("Lectura completa.", size = 14.sp, modifier = Modifier.weight(1f))
                             PixelButton("GUARDAR", { service.save(draft.key) }, color = Pal.Blue)
@@ -189,11 +189,10 @@ fun LiveResult(container: AppContainer, service: LiveScanService) {
                         DraftStatus.DUPLICATE -> {
                             val other = boxItems.firstOrNull { it.uid == draft.duplicateOf }
                             Column(Modifier.weight(1f)) {
-                                GbaText("Posible duplicado: ${other?.let { idx[it.speciesId]?.displayName } ?: "otro"} de la caja con los mismos IV.",
-                                    size = 14.sp, color = Pal.Warn)
+                                GbaText(duplicateQuestion(draft.dupKind, other?.let { idx[it.speciesId]?.displayName }), size = 14.sp)
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-                                    PixelButton("REEMPLAZAR", { container.scan.replace(draft.key) }, Modifier.weight(1f))
-                                    PixelButton("AGREGAR", { container.scan.addAnyway(draft.key) }, Modifier.weight(1f))
+                                    PixelButton("ES EL MISMO", { container.scan.replace(draft.key) }, Modifier.weight(1f))
+                                    PixelButton("ES OTRO", { container.scan.addAnyway(draft.key) }, Modifier.weight(1f))
                                 }
                             }
                         }

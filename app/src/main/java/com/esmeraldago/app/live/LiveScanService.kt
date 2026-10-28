@@ -393,7 +393,8 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
             while (isActive) {
                 // Fuera del juego no se lee nada; un buen rato sin ver un Pokémon, se lee más espaciado.
                 delay(if (misses > 8) 4000 else 1200)
-                if (away) continue
+                // Fuera del juego, o mientras un escaneo con la burbuja toca la pantalla, no se lee.
+                if (away || scanJob?.isActive == true) continue
                 val bmp = capturer?.grab() ?: continue
                 val idx = session.idx()
                 val parser = session.parserFor(idx)

@@ -58,6 +58,11 @@ data class ScreenReading(
     val gigantamax: Boolean = false,
     /** Tiene Return: solo lo aprenden los purificados. */
     val hasReturn: Boolean = false,
+    /** Tiene Frustración: solo la tienen los oscuros. */
+    val hasFrustration: Boolean = false,
+    /** Peso y altura: no cambian al subir de nivel; junto con la especie identifican al Pokémon. */
+    val weightKg: Double? = null,
+    val heightM: Double? = null,
     val types: Set<String> = emptySet(),
     val nameText: String? = null,
     val candyNames: List<String> = emptyList(),
@@ -74,6 +79,8 @@ data class ScreenReading(
         shadow = shadow || o.shadow, lucky = lucky || o.lucky,
         dynamax = dynamax || o.dynamax, gigantamax = gigantamax || o.gigantamax,
         hasReturn = hasReturn || o.hasReturn,
+        hasFrustration = hasFrustration || o.hasFrustration,
+        weightKg = weightKg ?: o.weightKg, heightM = heightM ?: o.heightM,
         types = types.ifEmpty { o.types }, nameText = nameText ?: o.nameText,
         candyNames = (candyNames + o.candyNames).distinct(), captionName = captionName ?: o.captionName,
         // La parte de arriba suele mostrar solo el primer ataque (o cortado): se suman los de las dos.
@@ -96,6 +103,8 @@ data class ScanResult(
     val dynamax: Boolean = false,
     val gigantamax: Boolean = false,
     val nickname: String? = null,
+    val weightKg: Double? = null,
+    val heightM: Double? = null,
     val appraisal: Ivs? = null,
     val candidates: List<PokeMath.IvCandidate> = emptyList(),
     /** Hay más de una especie/forma compatible y la pantalla no alcanza para decidir. */
@@ -368,6 +377,10 @@ class ScreenParser(private val idx: GameIndex) {
         val moveTexts = movesFrom?.let { from -> sorted.filter { it.top >= from - 0.005f }.map { it.text.trim() } }.orEmpty()
         val returnKeys = listOfNotNull("retum", idx.move("RETURN")?.nameEs?.let { ocrNorm(key(it)) })
         val hasReturn = moveTexts.any { key(stripMoveNoise(it)).let { k -> k.length >= 5 && returnKeys.any { r -> levenshtein(ocrNorm(k), r) <= 1 } } }
+        // Frustración solo la tienen los oscuros.
+        val frustrationKeys = listOfNotNull("frustration", idx.move("FRUSTRATION")?.nameEs?.let { ocrNorm(key(it)) })
+        val hasFrustration = moveTexts.any { key(stripMoveNoise(it)).let { k -> k.length >= 8 && frustrationKeys.any { r -> levenshtein(ocrNorm(k), r) <= 2 } } }
+        val (weightKg, heightM) = readSize(sorted)
 
         return ScreenReading(
             appraisalScreen = appraisalScreen,
@@ -376,12 +389,33 @@ class ScreenParser(private val idx: GameIndex) {
             dust = findDust(sorted, powerUp),
             shadow = shadow, lucky = lucky, dynamax = dynamax, gigantamax = gigantamax,
             hasReturn = hasReturn,
+            hasFrustration = hasFrustration,
+            weightKg = weightKg, heightM = heightM,
             types = types,
             nameText = findNameLine(sorted, hpLine)?.text?.trim(),
             candyNames = findCandyNames(sorted),
             captionName = sorted.firstNotNullOfOrNull { l -> captionRegex.find(l.text.trim())?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() } },
             moveTexts = moveTexts,
         )
+    }
+
+    private val weightRegex = Regex("""^\s*(\d{1,4}[.,]\d{1,2})\s*kg\s*$""", RegexOption.IGNORE_CASE)
+    private val heightRegex = Regex("""^\s*(\d{1,2}[.,]\d{1,2})\s*m\s*$""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Peso y altura de la fila de tipos ("37.35kg" a la izquierda, "1.11m" a la derecha, en el mismo renglón).
+     * Solo con decimales: un número sin decimales suele ser un pedazo mal leído ("97kg" de "8.97kg").
+     */
+    private fun readSize(lines: List<OcrLine>): Pair<Double?, Double?> {
+        fun num(s: String) = s.replace(',', '.').toDoubleOrNull()
+        val w = lines.firstOrNull { it.centerX < 0.45f && it.top in 0.3f..0.85f && weightRegex.matches(it.text) }
+        val weight = w?.let { weightRegex.find(it.text)?.groupValues?.get(1)?.let(::num) }
+        val h = lines.firstOrNull { l ->
+            l.centerX > 0.55f && l.top in 0.3f..0.85f && heightRegex.matches(l.text) &&
+                (w == null || abs(l.centerY - w.centerY) < 0.02f)
+        }
+        val height = h?.let { heightRegex.find(it.text)?.groupValues?.get(1)?.let(::num) }
+        return weight to height
     }
 
     private data class CpRead(val cp: Int?, val digits: String?, val labeled: Boolean)
@@ -533,8 +567,11 @@ class ScreenParser(private val idx: GameIndex) {
         val captionMatches = reading.captionName?.let { speciesNamed(it) }.orEmpty()
         val captionIds = captionMatches.map { it.id }.toSet()
 
-        // Dust → niveles posibles. Un purificado paga el 90 %; se nota por Return o porque solo esa tabla coincide.
-        val (levels, purified) = levelsFor(reading)
+        // Dust → niveles posibles. Un purificado paga el 90 % y un oscuro el 120 %: se nota por Return / Frustración,
+        // por el botón PURIFY o porque solo esa tabla de costos coincide.
+        val (levels, purified, shadowByDust) = levelsFor(reading)
+        @Suppress("NAME_SHADOWING")
+        val reading = if (shadowByDust && !reading.shadow) reading.copy(shadow = true) else reading
         val minIv = maxOf(if (reading.lucky) 12 else 0, if (purified) 2 else 0)
         val allLevels = generateSequence(1.0) { it + 0.5 }.takeWhile { it <= minOf(levelCap, idx.maxLevel) }.toList()
 
@@ -654,6 +691,7 @@ class ScreenParser(private val idx: GameIndex) {
             shadow = reading.shadow, purified = purified, lucky = reading.lucky,
             dynamax = reading.dynamax, gigantamax = reading.gigantamax,
             nickname = species?.let { nicknameOf(reading.nameText, it) },
+            weightKg = reading.weightKg, heightM = reading.heightM,
             appraisal = appraisal,
             candidates = candidates,
             speciesAmbiguous = ambiguous,
@@ -664,17 +702,25 @@ class ScreenParser(private val idx: GameIndex) {
         )
     }
 
-    /** Niveles compatibles con el polvo y si el Pokémon es purificado. Polvo ilegible o incoherente → null. */
-    private fun levelsFor(r: ScreenReading): Pair<List<Double>?, Boolean> {
-        val d = r.dust ?: return null to r.hasReturn
-        fun lv(purified: Boolean) = PokeMath.levelsForDustCost(d, r.shadow, purified, r.lucky, idx.maxLevel).filter { it <= levelCap }
-        if (r.shadow) return lv(false).ifEmpty { null } to false
-        val normal = lv(false)
-        val pure = lv(true)
+    /**
+     * Niveles compatibles con el polvo, si es purificado y si es oscuro (cuando solo lo dice el costo o Frustración).
+     * Polvo ilegible o incoherente → niveles null.
+     */
+    private fun levelsFor(r: ScreenReading): Triple<List<Double>?, Boolean, Boolean> {
+        val shadowSeen = r.shadow || r.hasFrustration
+        val d = r.dust ?: return Triple(null, r.hasReturn && !shadowSeen, r.hasFrustration)
+        fun lv(shadow: Boolean, purified: Boolean) =
+            PokeMath.levelsForDustCost(d, shadow, purified, r.lucky, idx.maxLevel).filter { it <= levelCap }
+        if (shadowSeen) return Triple(lv(true, false).ifEmpty { null }, false, r.hasFrustration)
+        val normal = lv(false, false)
+        val pure = lv(false, true)
+        val dark = lv(true, false)
         return when {
-            r.hasReturn && pure.isNotEmpty() -> pure to true
-            normal.isEmpty() && pure.isNotEmpty() -> pure to true
-            else -> (normal + pure).distinct().sorted().ifEmpty { null } to r.hasReturn
+            r.hasReturn && pure.isNotEmpty() -> Triple(pure, true, false)
+            normal.isEmpty() && pure.isNotEmpty() && dark.isEmpty() -> Triple(pure, true, false)
+            // Ese costo solo existe para un oscuro: lo es aunque no se haya visto el botón PURIFY.
+            normal.isEmpty() && pure.isEmpty() && dark.isNotEmpty() -> Triple(dark, false, true)
+            else -> Triple((normal + pure).distinct().sorted().ifEmpty { null }, r.hasReturn, false)
         }
     }
 

@@ -46,6 +46,18 @@ enum class DraftStatus {
     SAVED,
     /** Era uno de la caja y se actualizó. */
     UPDATED,
+    /** Ya estaba en la caja tal cual. */
+    IN_BOX,
+}
+
+/** Por qué se pregunta si es el mismo que uno de la caja. */
+enum class DupKind {
+    /** Misma especie y mismos IV (el de la caja no tiene peso y altura para comparar). */
+    SAME,
+    /** Misma familia y mismos IV, otra especie: puede haber evolucionado. */
+    EVOLVED,
+    /** El de la caja es oscuro y este es purificado con sus IV + 2. */
+    PURIFIED,
 }
 
 /** Un Pokémon detectado. */
@@ -66,13 +78,19 @@ data class ScanDraft(
     val before: OwnedPokemon? = null,
     /** Registro de la caja que podría ser el mismo Pokémon. */
     val duplicateOf: String? = null,
+    val dupKind: DupKind? = null,
     /** Se eligió agregarlo aunque se pareciera a otro de la caja. */
     val forceNew: Boolean = false,
+    /** Ya estaba en la caja tal cual (mismo peso y altura, nada que actualizar). */
+    val inBox: Boolean = false,
+    /** Qué se actualizó en el registro de la caja ("subió de nivel"). */
+    val change: String? = null,
 ) {
     /** Lo que falta para poder guardarlo, o null. */
     val missing: String? get() = missingOf(result, ivPicked)
 
     val status: DraftStatus get() = when {
+        savedUid != null && inBox -> DraftStatus.IN_BOX
         savedUid != null && before != null -> DraftStatus.UPDATED
         savedUid != null -> DraftStatus.SAVED
         duplicateOf != null -> DraftStatus.DUPLICATE
@@ -256,21 +274,40 @@ class ScanSession(
     private fun draft(key: Int) = _drafts.value.firstOrNull { it.key == key }
 
     /**
-     * Guarda el borrador si está completo: si ya tiene registro en la caja lo actualiza; si se parece a uno de la caja
-     * (misma familia y mismos IV) lo deja como posible duplicado; si no, lo agrega.
+     * Guarda el borrador si está completo:
+     * - si ya tiene registro en la caja (releído en esta sesión), lo actualiza;
+     * - mismo peso y altura que uno de la caja de su familia: es ese; si nada cambió, "ya está en la caja", y si no,
+     *   se actualiza el registro;
+     * - mismos IV que uno de la familia sin poder compararlos por peso y altura (o evolucionado, o purificado):
+     *   se pregunta si es el mismo;
+     * - si no, se agrega.
      */
     suspend fun settle(key: Int, idx: GameIndex): ScanDraft? = mergeLock.withLock {
         val d = draft(key) ?: return@withLock null
         when {
             d.savedUid != null -> collection.get(d.savedUid)?.let { cur ->
                 val m = mergeInto(cur, d.pokemon)
-                if (m != cur) collection.upsert(m)
+                if (m != cur) {
+                    collection.upsert(m)
+                    // Uno agregado en esta sesión sigue como "guardado"; uno que ya estaba pasa a "actualizado".
+                    update(key) {
+                        if (it.before == null && !it.inBox) it
+                        else it.copy(before = it.before ?: cur, inBox = false, change = describe(it.before ?: cur, m))
+                    }
+                }
             }
             d.missing != null || d.duplicateOf != null -> Unit
-            else -> {
-                val dup = if (d.forceNew) null else findDuplicate(d.pokemon, idx)
-                if (dup != null) update(key) { it.copy(duplicateOf = dup.uid, include = false) }
-                else {
+            else -> when (val m = if (d.forceNew) null else match(d.pokemon, idx)) {
+                is Match.Fingerprint -> {
+                    val merged = mergeInto(m.p, d.pokemon)
+                    if (merged == m.p) update(key) { it.copy(savedUid = m.p.uid, inBox = true, include = false) }
+                    else {
+                        collection.upsert(merged)
+                        update(key) { it.copy(savedUid = m.p.uid, before = m.p, change = describe(m.p, merged), include = false) }
+                    }
+                }
+                is Match.Ask -> update(key) { it.copy(duplicateOf = m.p.uid, dupKind = m.kind, include = false) }
+                null -> {
                     val uid = collection.add(d.pokemon)
                     update(key) { it.copy(savedUid = uid, include = false) }
                 }
@@ -279,36 +316,72 @@ class ScanSession(
         draft(key)
     }
 
-    /** Un Pokémon de la caja de la misma familia y con los mismos IV exactos. */
-    fun findDuplicate(p: OwnedPokemon, idx: GameIndex): OwnedPokemon? {
+    private sealed interface Match {
+        data class Fingerprint(val p: OwnedPokemon) : Match
+        data class Ask(val p: OwnedPokemon, val kind: DupKind) : Match
+    }
+
+    /** Busca en la caja, dentro de la familia, al mismo Pokémon. */
+    private fun match(p: OwnedPokemon, idx: GameIndex): Match? {
         val s = idx[p.speciesId] ?: return null
         val family = (idx.family(s).map { it.id } + s.id).toSet()
-        return collection.items.value.firstOrNull { o ->
-            o.speciesId in family && o.ivExact && o.ivAtk == p.ivAtk && o.ivDef == p.ivDef && o.ivSta == p.ivSta
+        val kin = collection.items.value.filter { it.speciesId in family }
+        val sized = p.weightKg != null && p.heightM != null
+        // Peso y altura con dos decimales no se repiten dentro de una familia: es el mismo.
+        if (sized) kin.firstOrNull { it.weightKg == p.weightKg && it.heightM == p.heightM }?.let { return Match.Fingerprint(it) }
+        val mine = Triple(p.ivAtk, p.ivDef, p.ivSta)
+        for (o in kin) {
+            if (!o.ivExact) continue
+            // Misma especie, los dos con peso y altura y distintos: son dos Pokémon distintos.
+            if (sized && o.weightKg != null && o.heightM != null && o.speciesId == p.speciesId) continue
+            val theirs = Triple(o.ivAtk, o.ivDef, o.ivSta)
+            // Purificar suma 2 a cada IV (hasta 15).
+            val purifiedTheirs = Triple(minOf(15, o.ivAtk + 2), minOf(15, o.ivDef + 2), minOf(15, o.ivSta + 2))
+            val kind = when {
+                theirs == mine && o.speciesId == p.speciesId -> DupKind.SAME
+                theirs == mine -> DupKind.EVOLVED
+                o.shadow && p.purified && purifiedTheirs == mine -> DupKind.PURIFIED
+                else -> null
+            } ?: continue
+            return Match.Ask(o, kind)
         }
+        return null
     }
+
+    /** Qué cambió en el registro, en pocas palabras. */
+    private fun describe(old: OwnedPokemon, new: OwnedPokemon): String = listOfNotNull(
+        "evolucionó".takeIf { new.speciesId != old.speciesId },
+        "purificado".takeIf { new.purified && !old.purified },
+        "subió de nivel".takeIf { new.level > old.level },
+        "IV exactos".takeIf { new.ivExact && !old.ivExact },
+        "ataques".takeIf { new.fast != old.fast || new.charged1 != old.charged1 || new.charged2 != old.charged2 },
+        "peso y altura".takeIf { old.weightKg == null && new.weightKg != null },
+    ).joinToString(", ").ifEmpty { "datos" }
 
     /** DESHACER: un guardado se quita de la caja; una actualización vuelve a como estaba. */
     fun undo(key: Int) {
         val d = draft(key) ?: return
         val uid = d.savedUid ?: return
+        if (d.inBox) return
         if (d.before != null) collection.upsert(d.before) else collection.delete(uid)
-        update(key) { it.copy(savedUid = null, before = null, include = false) }
+        // Se deshizo una actualización: no era ese; si se vuelve a guardar, va aparte.
+        update(key) { it.copy(savedUid = null, before = null, change = null, include = false, forceNew = it.before != null) }
     }
 
-    /** Es el mismo que el de la caja: se actualiza ese registro (también si evolucionó). */
+    /** ES EL MISMO: se actualiza ese registro de la caja (también si evolucionó o se purificó). */
     fun replace(key: Int) {
         val d = draft(key) ?: return
         val old = d.duplicateOf?.let { collection.get(it) } ?: return
-        collection.upsert(mergeInto(old, d.pokemon))
-        update(key) { it.copy(savedUid = old.uid, before = old, duplicateOf = null, include = false) }
+        val merged = mergeInto(old, d.pokemon)
+        collection.upsert(merged)
+        update(key) { it.copy(savedUid = old.uid, before = old, change = describe(old, merged), duplicateOf = null, dupKind = null, include = false) }
     }
 
-    /** Es otro Pokémon: se agrega aparte. */
+    /** ES OTRO: se agrega aparte. */
     fun addAnyway(key: Int) {
         val d = draft(key) ?: return
         val uid = collection.add(d.pokemon)
-        update(key) { it.copy(savedUid = uid, duplicateOf = null, forceNew = true, include = false) }
+        update(key) { it.copy(savedUid = uid, duplicateOf = null, dupKind = null, forceNew = true, include = false) }
     }
 
     /** Guarda todos los completos sin guardar; devuelve cuántos se guardaron (los parecidos a otro quedan para decidir). */
@@ -395,6 +468,7 @@ class ScanSession(
         val pickedSpecies: String? = null,
         val ivPicked: Boolean = false,
         val duplicateOf: String? = null,
+        val dupKind: DupKind? = null,
         val forceNew: Boolean = false,
         val sources: Int = 1,
     )
@@ -404,7 +478,7 @@ class ScanSession(
     private fun persist(file: File, list: List<ScanDraft>) {
         val out = list.filter { !it.saved }.map { d ->
             PendingDraft(d.pokemon, d.result.reading, d.result.appraisal?.let { listOf(it.atk, it.def, it.sta) },
-                d.pickedSpecies?.id, d.ivPicked, d.duplicateOf, d.forceNew, d.sources)
+                d.pickedSpecies?.id, d.ivPicked, d.duplicateOf, d.dupKind, d.forceNew, d.sources)
         }
         val af = AtomicFile(file)
         if (out.isEmpty()) { af.delete(); return }
@@ -434,7 +508,7 @@ class ScanSession(
                 // Si el registro parecido ya no está en la caja, deja de ser un posible duplicado.
                 val dup = p.duplicateOf?.takeIf { collection.get(it) != null }
                 ScanDraft(nextKey++, r, p.pokemon, include = false, sources = p.sources, pickedSpecies = picked,
-                    ivPicked = p.ivPicked, duplicateOf = dup, forceNew = p.forceNew)
+                    ivPicked = p.ivPicked, duplicateOf = dup, dupKind = p.dupKind?.takeIf { dup != null }, forceNew = p.forceNew)
             }
             _drafts.update { restored + it }
         }
@@ -468,6 +542,8 @@ class ScanSession(
                 dynamax = (old.dynamax || new.dynamax) && !(old.gigantamax || new.gigantamax),
                 gigantamax = old.gigantamax || new.gigantamax,
                 nickname = old.nickname ?: new.nickname,
+                weightKg = new.weightKg ?: old.weightKg,
+                heightM = new.heightM ?: old.heightM,
             )
         }
 
@@ -496,6 +572,8 @@ class ScanSession(
                 dynamax = (r.dynamax && !r.gigantamax) || previous?.dynamax == true,
                 gigantamax = r.gigantamax || previous?.gigantamax == true,
                 nickname = r.nickname ?: previous?.nickname,
+                weightKg = r.weightKg ?: previous?.weightKg,
+                heightM = r.heightM ?: previous?.heightM,
             )
         }
     }

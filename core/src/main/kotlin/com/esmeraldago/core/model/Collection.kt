@@ -27,6 +27,9 @@ data class OwnedPokemon(
     val gigantamax: Boolean = false,
     val nickname: String? = null,
     val addedAt: Long = 0,
+    /** Peso y altura tal como los muestra el juego: con la especie, identifican al Pokémon al volver a escanearlo. */
+    val weightKg: Double? = null,
+    val heightM: Double? = null,
 ) {
     /** Id de PvPoke para combates (la variante shadow es otra entrada). */
     val battleId: String get() = if (shadow) "${speciesId}_shadow" else speciesId

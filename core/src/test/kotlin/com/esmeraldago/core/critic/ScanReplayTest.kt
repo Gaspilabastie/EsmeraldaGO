@@ -268,6 +268,35 @@ class ScanReplayTest {
             kotlin.math.ceil(c.toDouble()).toInt() == dust
         }.toList()
 
+    /** Peso, altura, oscuro y purificado de cada captura, contra lo que muestra (truth.json). Diagnóstico. */
+    @Test
+    fun sizesAndShadow() {
+        val dir = System.getenv("SCAN_REPLAY_DIR")?.let(::File)
+        assumeTrue(dir != null && File(dir, "truth.json").exists(), "SCAN_REPLAY_DIR no configurado")
+        val truth = Json.parseToJsonElement(File(dir, "truth.json").readText()).jsonArray.map { it.jsonObject }
+        val engine = File(dir, "ocr-mlkit")
+        val parser = ScreenParser(idx)
+        var sized = 0; var total = 0; var flagsOk = 0
+        val out = StringBuilder()
+        for (t in truth) {
+            val name = t.str("file")!!
+            val src = engine.listFiles()!!.firstOrNull { it.nameWithoutExtension.endsWith(name) } ?: continue
+            val root = Json.parseToJsonElement(src.readText())
+            val lines = (if (root is JsonArray) root else root.jsonObject["lines"]!!.jsonArray).map { it.toLine() }
+            val r = parser.parse(lines)
+            if (r.screen == com.esmeraldago.core.scan.ScreenType.UNKNOWN) continue
+            total++
+            if (r.weightKg != null && r.heightM != null) sized++
+            val ok = r.shadow == t.bool("shadow") && r.purified == t.bool("purified")
+            if (ok) flagsOk++
+            out.appendLine("%-45s %-14s %7s kg %5s m  oscuro %s/%s  purif %s/%s  polvo %s%s".format(name, r.species?.id, r.weightKg, r.heightM,
+                r.shadow, t.bool("shadow"), r.purified, t.bool("purified"), r.dust, if (ok) "" else "  <-- distinto"))
+        }
+        out.appendLine("peso y altura: $sized de $total; oscuro/purificado correctos: $flagsOk de $total")
+        println(out)
+        File(dir, "sizes-report.txt").writeText(out.toString())
+    }
+
     private fun fmt(b: AppraisalBars) = "%.2f/%.2f/%.2f".format(b.atk, b.def, b.sta)
 
     private fun pct(c: List<PokeMath.IvCandidate>): String {

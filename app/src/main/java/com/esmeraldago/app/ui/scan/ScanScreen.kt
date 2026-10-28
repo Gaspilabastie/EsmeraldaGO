@@ -38,7 +38,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.esmeraldago.app.live.LiveGestureService
 import com.esmeraldago.app.live.LiveScanService
+import com.esmeraldago.app.live.duplicateQuestion
 import com.esmeraldago.app.live.ivColor
+import com.esmeraldago.app.live.updatedText
 import com.esmeraldago.app.live.openPokemonGo
 import com.esmeraldago.app.live.rememberLiveScanStarter
 import com.esmeraldago.app.scan.DraftStatus
@@ -220,9 +222,17 @@ private fun Summary(d: ScanDraft, statusText: String, statusColor: androidx.comp
 private fun DoneRow(d: ScanDraft, onUndo: () -> Unit) {
     WindowBox(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), padding = 6.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val updated = d.status == DraftStatus.UPDATED
-            Summary(d, if (updated) "Actualizado en la caja." else "Guardado.", if (updated) Pal.Blue else Pal.Good, Modifier.weight(1f))
-            PixelButton(if (updated) "REVERTIR" else "DESHACER", onUndo, color = Pal.Muted)
+            when (d.status) {
+                DraftStatus.IN_BOX -> Summary(d, "Ya está en la caja.", Pal.Good, Modifier.weight(1f))
+                DraftStatus.UPDATED -> {
+                    Summary(d, updatedText(d.change), Pal.Blue, Modifier.weight(1f))
+                    PixelButton("REVERTIR", onUndo, color = Pal.Muted)
+                }
+                else -> {
+                    Summary(d, "Guardado.", Pal.Good, Modifier.weight(1f))
+                    PixelButton("DESHACER", onUndo, color = Pal.Muted)
+                }
+            }
         }
     }
 }
@@ -266,7 +276,7 @@ private fun OpenCard(
     val p = d.pokemon
     val s = d.result.species
     val (statusText, statusColor) = when (d.status) {
-        DraftStatus.DUPLICATE -> "Posible duplicado de ${duplicateName ?: "otro"} de la caja." to Pal.Warn
+        DraftStatus.DUPLICATE -> duplicateQuestion(d.dupKind, duplicateName) to Pal.Text
         DraftStatus.INCOMPLETE -> (d.missing ?: "") to Pal.Warn
         else -> (if (d.ivPicked) "IV elegidos a mano." else "Lectura completa.") to Pal.Muted
     }
@@ -314,8 +324,8 @@ private fun OpenCard(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
             if (d.status == DraftStatus.DUPLICATE) {
-                PixelButton("REEMPLAZAR", { session.replace(d.key) }, Modifier.weight(1f))
-                PixelButton("AGREGAR", { session.addAnyway(d.key) }, Modifier.weight(1f))
+                PixelButton("ES EL MISMO", { session.replace(d.key) }, Modifier.weight(1f))
+                PixelButton("ES OTRO", { session.addAnyway(d.key) }, Modifier.weight(1f))
             } else {
                 PixelButton("GUARDAR", onSave, Modifier.weight(2f), color = Pal.Blue, enabled = d.missing == null)
             }

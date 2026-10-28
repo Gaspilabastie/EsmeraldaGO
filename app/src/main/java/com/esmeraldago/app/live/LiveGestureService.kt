@@ -30,8 +30,10 @@ class LiveGestureService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
-        // La barra de notificaciones, el teclado o nuestras propias ventanas no cuentan como "salir del juego".
-        if (pkg == packageName || pkg in IGNORED || pkg.contains("inputmethod") || pkg.contains("keyboard")) return
+        // La barra de notificaciones, el teclado o nuestras ventanas flotantes no cuentan como "salir del juego";
+        // la app misma (EsmeraldaGO abierta) sí: ahí la burbuja no tiene nada que leer.
+        if (pkg == packageName && event.className?.toString()?.endsWith(".MainActivity") != true) return
+        if (pkg in IGNORED || pkg.contains("inputmethod") || pkg.contains("keyboard")) return
         _foreground.value = pkg
     }
 
