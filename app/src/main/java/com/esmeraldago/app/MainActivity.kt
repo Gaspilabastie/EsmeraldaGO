@@ -200,7 +200,18 @@ private fun AppNav() {
         }
         composable("teams") {
             TeamsScreen(back, onOwned = { nav.navigate("owned/$it") }, onAdvice = { nav.navigate("advice") },
-                onScan = { nav.navigate("scan") })
+                onScan = { nav.navigate("scan") },
+                onAnalyze = { league, members -> nav.navigate("teamAnalysis?league=$league&members=$members") })
+        }
+        composable(
+            "teamAnalysis?league={league}&members={members}",
+            listOf(
+                navArgument("league") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("members") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) {
+            com.esmeraldago.app.ui.teams.TeamAnalysisScreen(back, initial = it.arguments?.getString("members"),
+                initialLeague = it.arguments?.getString("league"))
         }
         composable("settings") { SettingsScreen(back, onChangelog = { nav.navigate("changelog") }) }
         composable("changelog") { com.esmeraldago.app.ui.settings.ChangelogScreen(back) }

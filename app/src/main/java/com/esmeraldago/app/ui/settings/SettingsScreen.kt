@@ -236,6 +236,7 @@ private fun FeedbackBox() {
 }
 
 /** Servicio de accesibilidad del escaneo en vivo: bajar la ficha para leer ataques y ocultar la burbuja fuera del juego. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun LiveScanBox() {
     val container = LocalContainer.current
@@ -265,6 +266,24 @@ private fun LiveScanBox() {
             size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 8.dp))
         Row(Modifier.padding(top = 6.dp)) {
             ToggleChip("Guardar automáticamente", settings.autoSave, { v -> container.settings.update { it.copy(autoSave = v) } })
+        }
+        // Apodo con los datos del Pokémon: se copia y se pega al renombrarlo en el juego (máximo 12 caracteres).
+        GbaText("Apodo para el juego (ej. con IV 15/14/12):", size = 12.sp, color = Pal.Muted, modifier = Modifier.padding(top = 10.dp))
+        FlowRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            com.esmeraldago.core.reco.NickStyle.entries.forEach { st ->
+                ToggleChip(st.label, settings.nick == st, { container.settings.update { it.copy(nickStyle = st.name) } })
+            }
+        }
+        GbaText(
+            when (settings.nick) {
+                com.esmeraldago.core.reco.NickStyle.CIRCLED -> "Queda así: 91 ⑮⑭⑫"
+                com.esmeraldago.core.reco.NickStyle.SLASH -> "Queda así: 91 15/14/12"
+                com.esmeraldago.core.reco.NickStyle.PVP -> "Queda así: S12 U230 (puesto de sus IV en Liga Super y Ultra)"
+            },
+            size = 12.sp, modifier = Modifier.padding(top = 4.dp),
+        )
+        Row(Modifier.padding(top = 6.dp)) {
+            ToggleChip("Copiar el apodo al escanear", settings.autoCopyNick, { v -> container.settings.update { it.copy(autoCopyNick = v) } })
         }
         LiveTestExport()
     }

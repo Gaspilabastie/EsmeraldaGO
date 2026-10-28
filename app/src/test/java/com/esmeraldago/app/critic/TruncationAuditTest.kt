@@ -152,6 +152,8 @@ class TruncationAuditTest {
         show { com.esmeraldago.app.ui.raids.CountersScreen("kyogre", "T5", onBack = {}, onSpecies = {}) }; record("counters/kyogre")
         show { com.esmeraldago.app.ui.max.MaxBattleScreen(onBack = {}, onSpecies = {}) }; record("max")
         show { com.esmeraldago.app.ui.teams.TeamsScreen(onBack = {}, onOwned = {}) }; record("equipos")
+        show { com.esmeraldago.app.ui.teams.TeamAnalysisScreen(onBack = {}, initial = "s:azumarill,s:medicham,s:registeel") }
+        record("equipos/análisis")
         show { com.esmeraldago.app.ui.advice.AdviceScreen(onBack = {}, onOwned = {}, onSpecies = {}) }; record("consejos")
         show { com.esmeraldago.app.ui.collection.CollectionScreen(onBack = {}, onOpen = {}, onAdd = {}, onScan = {}) }; record("caja")
         app.container.collection.items.value.forEach { p ->

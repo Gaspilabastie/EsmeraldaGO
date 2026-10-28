@@ -77,6 +77,7 @@ class AppContainer(app: Application) {
     val raids = RaidRepository(scope)
     val events = com.esmeraldago.app.data.EventsRepository(app, scope)
     val pokebattler = com.esmeraldago.app.data.PokebattlerRepository(app)
+    val regionals = com.esmeraldago.app.data.RegionalRepository(app)
     val updates = UpdateRepository(app, scope)
     val ocr = OcrScanner(app)
     val scan = ScanSession(

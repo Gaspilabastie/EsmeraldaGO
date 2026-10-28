@@ -27,7 +27,14 @@ data class Settings(
     /** Posición de la burbuja en píxeles (-1 = la de siempre). */
     val bubbleX: Int = -1,
     val bubbleY: Int = -1,
+    /** Estilo del apodo para el juego (nombre de [com.esmeraldago.core.reco.NickStyle]). */
+    val nickStyle: String = "CIRCLED",
+    /** Escaneo en vivo: copiar el apodo al portapapeles cuando los IV quedan definidos. */
+    val autoCopyNick: Boolean = false,
 ) {
+    val nick: com.esmeraldago.core.reco.NickStyle
+        get() = com.esmeraldago.core.reco.NickStyle.entries.firstOrNull { it.name == nickStyle } ?: com.esmeraldago.core.reco.NickStyle.CIRCLED
+
     /**
      * Nivel máximo de un Pokémon al escanear. Ya no se pide el nivel de entrenador: el costo de polvo fija el nivel
      * casi siempre, y el tope (entrenador + 10) solo descartaba algún nivel en entrenadores bajos.
@@ -50,6 +57,8 @@ class SettingsRepository(context: Context) {
             autoSave = prefs.getBoolean("autoSave", true),
             bubbleX = prefs.getInt("bubbleX", -1),
             bubbleY = prefs.getInt("bubbleY", -1),
+            nickStyle = prefs.getString("nickStyle", null) ?: "CIRCLED",
+            autoCopyNick = prefs.getBoolean("autoCopyNick", false),
         )
     )
     val state: StateFlow<Settings> = _state.asStateFlow()
@@ -69,6 +78,8 @@ class SettingsRepository(context: Context) {
             .putBoolean("autoSave", s.autoSave)
             .putInt("bubbleX", s.bubbleX)
             .putInt("bubbleY", s.bubbleY)
+            .putString("nickStyle", s.nickStyle)
+            .putBoolean("autoCopyNick", s.autoCopyNick)
             .apply()
     }
 }

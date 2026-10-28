@@ -47,7 +47,7 @@ import com.esmeraldago.core.reco.Advice
 import com.esmeraldago.core.reco.AdviceKind
 import com.esmeraldago.core.reco.GameMode
 
-private enum class AdviceTab(val label: String) { POWER("QUÉ SUBIR"), CATCH("QUÉ ATRAPAR") }
+private enum class AdviceTab(val label: String) { POWER("QUÉ SUBIR"), CATCH("QUÉ ATRAPAR"), REGIONAL("REGIONALES") }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -64,6 +64,7 @@ fun AdviceScreen(onBack: () -> Unit, onOwned: (String) -> Unit, onSpecies: (Stri
         TitleBar("Consejos", onBack)
         PixelTabs(AdviceTab.entries, tab, { it.label }, { tab = it }, Modifier.padding(vertical = 6.dp))
         WithGame { idx, reco ->
+            if (tab == AdviceTab.REGIONAL) { RegionalsContent(idx, owned); return@WithGame }
             LaunchedEffect(idx) { if (raids == null) container.raids.refresh(idx) }
             val raidIds = raids.orEmpty().mapNotNull { it.species?.id }.toSet()
             val (advice, busy) = rememberComputed(tab, owned, raidIds, reco) {

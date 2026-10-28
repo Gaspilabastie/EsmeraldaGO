@@ -137,6 +137,9 @@ fun OwnedDetailScreen(uid: String, onBack: () -> Unit, onEdit: () -> Unit) {
                         },
                         size = 12.sp, color = if (p.ivExact) Pal.Text else Pal.Warn,
                     )
+                    // Apodo con sus datos, para pegarlo al renombrarlo en el juego (con IV estimados confundiría).
+                    if (p.ivExact) com.esmeraldago.app.ui.common.NicknameRow(container, p, idx, Modifier.padding(top = 6.dp),
+                        onCopied = { container.notify("Apodo copiado.") })
                 }
 
                 WindowBox(Modifier.fillMaxWidth()) {

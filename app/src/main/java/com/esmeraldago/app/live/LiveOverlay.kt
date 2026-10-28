@@ -33,6 +33,7 @@ import com.esmeraldago.app.AppContainer
 import com.esmeraldago.app.data.GameState
 import com.esmeraldago.app.scan.DraftStatus
 import com.esmeraldago.app.scan.DupKind
+import com.esmeraldago.app.ui.common.NicknameRow
 import com.esmeraldago.app.ui.common.ProvideContainer
 import com.esmeraldago.app.ui.common.Sprite
 import com.esmeraldago.app.ui.common.displayName
@@ -166,6 +167,9 @@ fun LiveResult(container: AppContainer, service: LiveScanService) {
                     ToggleChip("SHINY", p.shiny, { v -> container.scan.setShiny(draft.key, v) })
                     CloseButton { service.showPanel(false) }
                 }
+                // Apodo para el juego: se copia y se pega al renombrarlo.
+                if (s != null && (draft.result.ivExact || draft.ivPicked))
+                    NicknameRow(container, p, idx, Modifier.padding(top = 4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(top = 4.dp)) {
                     when (draft.status) {

@@ -42,7 +42,11 @@ import com.esmeraldago.core.reco.PvpCandidate
 private val ROLES = listOf("Abridor", "Cambio", "Cierre")
 
 @Composable
-fun TeamsScreen(onBack: () -> Unit, onOwned: (String) -> Unit, onAdvice: () -> Unit = {}, onScan: () -> Unit = {}) {
+fun TeamsScreen(
+    onBack: () -> Unit, onOwned: (String) -> Unit, onAdvice: () -> Unit = {}, onScan: () -> Unit = {},
+    /** Abre el análisis con la liga y los lugares ("o:uid" separados por coma). */
+    onAnalyze: (String, String) -> Unit = { _, _ -> },
+) {
     val owned by LocalContainer.current.collection.items.collectAsState()
     var league by rememberSaveable { mutableStateOf(League.GREAT) }
 
@@ -59,11 +63,20 @@ fun TeamsScreen(onBack: () -> Unit, onOwned: (String) -> Unit, onAdvice: () -> U
                 Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PixelButton("ESCANEAR", onScan)
                     PixelButton("VER QUÉ ATRAPAR", onAdvice, color = Pal.Gold)
+                    PixelButton("ANALIZAR UN EQUIPO", { onAnalyze(league.key, "") }, color = Pal.Muted)
                 }
                 return@WithGame
             }
             val rest = others.filter { o -> team.none { it.owned.uid == o.owned.uid && it.species.id == o.species.id } }
             LazyColumn(Modifier.fillMaxSize()) {
+                item {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Con la especie que juega (si hay que evolucionarlo, la evolución).
+                        PixelButton("ANALIZAR", { onAnalyze(league.key, team.joinToString(",") { "o:${it.owned.uid}@${it.species.id}" }) },
+                            Modifier.weight(1f))
+                        PixelButton("ARMAR OTRO", { onAnalyze(league.key, "") }, Modifier.weight(1f), color = Pal.Muted)
+                    }
+                }
                 itemsIndexed(team, key = { _, c -> "t|${c.owned.uid}|${c.species.id}" }) { i, c -> CandidateRow(c, ROLES.getOrElse(i) { "" }, idx, onOwned) }
                 if (team.size < 3) item {
                     Column {

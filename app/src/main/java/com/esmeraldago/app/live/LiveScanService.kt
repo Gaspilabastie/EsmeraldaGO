@@ -233,6 +233,11 @@ class LiveScanService : LifecycleService(), SavedStateRegistryOwner {
                 else container.scan.drafts.value.firstOrNull { it.key == k }
             }
             log("estado: ${d?.status ?: "sin borrador"}" + (d?.missing?.let { " ($it)" } ?: ""))
+            // Apodo listo para pegar al renombrarlo en el juego (opción en Opciones).
+            if (d != null && d.result.species != null && (d.result.ivExact || d.ivPicked) && container.settings.state.value.autoCopyNick) {
+                runCatching { com.esmeraldago.app.ui.common.copyNickname(this@LiveScanService,
+                    com.esmeraldago.app.ui.common.nicknameFor(container, d.pokemon, idx)) }
+            }
             _mark.value = if (d?.saved == true) "✓" else "!"
             vibrate(if (d?.saved == true) 25 else 70)
             showPanel(true)
